@@ -1,0 +1,311 @@
+'use client'
+
+import { useState, useEffect } from 'react'
+import { Edit2, Mail, Plus, Star, Loader2, Sparkles, Check } from 'lucide-react'
+import { Modal } from '@/components/ui/Modal'
+import { StatusBadge, Badge } from '@/components/ui/Badge'
+import { formatDateTime, formatCurrency, vehicleLabels } from '@/lib/utils'
+import { createClient } from '@/lib/supabase/client'
+import { useToast } from '@/components/ui/Toast'
+import type { Booking, Profile, Quote, Supplier } from '@/types'
+
+interface Props {
+  open: boolean
+  onClose: () => void
+  booking: Booking
+  suppliers: Supplier[]
+  profile: Profile
+  onEdit: () => void
+  onRefresh: () => void
+}
+
+export function BookingDetailModal({ open, onClose, booking, suppliers, profile, onEdit, onRefresh }: Props) {
+  const { toast } = useToast()
+  const [quotes, setQuotes] = useState<Quote[]>([])
+  const [showAddQuote, setShowAddQuote] = useState(false)
+  const [emailDraft, setEmailDraft] = useState('')
+  const [aiLoading, setAiLoading] = useState(false)
+  const [addingQuote, setAddingQuote] = useState(false)
+  const [newQuote, setNewQuote] = useState({
+    supplier_id: suppliers[0]?.id ?? '',
+    amount_usd: 0,
+    includes_driver: false,
+    vehicle_model: '',
+    notes: '',
+  })
+
+  useEffect(() => {
+    if (open) loadQuotes()
+  }, [open, booking.id])
+
+  async function loadQuotes() {
+    const supabase = createClient()
+    const { data } = await supabase
+      .from('quotes')
+      .select('*, suppliers(*)')
+      .eq('booking_id', booking.id)
+      .order('amount_usd', { ascending: true })
+    if (data) setQuotes(data)
+  }
+
+  async function handleSelectQuote(quoteId: string) {
+    const supabase = createClient()
+    // Deselect all
+    await supabase.from('quotes').update({ is_selected: false }).eq('booking_id', booking.id)
+    // Select this one
+    const quote = quotes.find((q) => q.id === quoteId)
+    await supabase.from('quotes').update({ is_selected: true }).eq('id', quoteId)
+    // Update booking status to quoted + assign supplier
+    await supabase.from('bookings').update({
+      status: 'quoted',
+      assigned_supplier: quote?.supplier_id,
+    }).eq('id', booking.id)
+    toast('Quote selected!', 'success')
+    await loadQuotes()
+    onRefresh()
+  }
+
+  async function handleAddQuote() {
+    setAddingQuote(true)
+    const supabase = createClient()
+    await supabase.from('quotes').insert({
+      booking_id: booking.id,
+      supplier_id: newQuote.supplier_id,
+      amount_usd: newQuote.amount_usd,
+      includes_driver: newQuote.includes_driver,
+      vehicle_model: newQuote.vehicle_model || null,
+      notes: newQuote.notes || null,
+      created_by: profile.id,
+    })
+    toast('Quote added!', 'success')
+    setShowAddQuote(false)
+    await loadQuotes()
+    setAddingQuote(false)
+  }
+
+  async function generateEmailDraft() {
+    setAiLoading(true)
+    const supplier = suppliers[0]
+    if (!supplier) { setAiLoading(false); return }
+    try {
+      const res = await fetch('/api/ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'draft_email', booking, supplier }),
+      })
+      const data = await res.json()
+      setEmailDraft(data.email ?? '')
+    } catch {
+      setEmailDraft('Failed to generate email. Please try again.')
+    }
+    setAiLoading(false)
+  }
+
+  async function summarizeBooking() {
+    setAiLoading(true)
+    try {
+      const res = await fetch('/api/ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'summarize', booking }),
+      })
+      const data = await res.json()
+      toast(data.summary ?? 'Summary ready', 'info')
+    } catch { /* ignore */ }
+    setAiLoading(false)
+  }
+
+  const cheapest = quotes.length > 0 ? quotes[0] : null
+  const bestValue = quotes.length > 1
+    ? quotes.reduce((best, q) => {
+        const bSupplier = suppliers.find((s) => s.id === best.supplier_id)
+        const qSupplier = suppliers.find((s) => s.id === q.supplier_id)
+        const bScore = (bSupplier?.rating ?? 0) / 5 * 0.5 + (1 - best.amount_usd / (cheapest?.amount_usd || 1)) * 0.5
+        const qScore = (qSupplier?.rating ?? 0) / 5 * 0.5 + (1 - q.amount_usd / (cheapest?.amount_usd || 1)) * 0.5
+        return qScore > bScore ? q : best
+      })
+    : null
+
+  const canEdit = profile.role !== 'finance'
+  const canManageQuotes = ['admin', 'manager', 'staff'].includes(profile.role)
+
+  return (
+    <Modal open={open} onClose={onClose} title={`Booking ${booking.reference}`} subtitle={`${booking.guest_name} · ${booking.guest_nationality}`} size="2xl">
+      <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+        {/* Status + actions */}
+        <div className="flex items-center justify-between">
+          <StatusBadge status={booking.status} />
+          <div className="flex gap-2">
+            <button onClick={summarizeBooking} disabled={aiLoading} className="btn-secondary text-xs py-1.5 px-3">
+              <Sparkles className="w-3.5 h-3.5" /> AI Summary
+            </button>
+            {canEdit && booking.status === 'pending' && (
+              <button onClick={onEdit} className="btn-secondary text-xs py-1.5 px-3">
+                <Edit2 className="w-3.5 h-3.5" /> Edit
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Details grid */}
+        <div className="grid grid-cols-2 gap-3 text-sm">
+          {[
+            ['Guest', booking.guest_name],
+            ['Nationality', booking.guest_nationality],
+            ['Guest Count', `${booking.guest_count} pax`],
+            ['Vehicle', vehicleLabels[booking.vehicle_type]],
+            ['Driver', booking.driver_required ? '✅ Required' : '❌ Not needed'],
+            ['Budget', formatCurrency(booking.budget_usd)],
+            ['Final Cost', formatCurrency(booking.final_cost_usd)],
+            ['Pickup', formatDateTime(booking.pickup_datetime)],
+            ['Dropoff', booking.dropoff_datetime ? formatDateTime(booking.dropoff_datetime) : '—'],
+            ['Pickup Location', booking.pickup_location],
+            ['Dropoff Location', booking.dropoff_location],
+          ].map(([label, value]) => (
+            <div key={label} className="bg-white/[0.03] rounded-xl px-3 py-2.5">
+              <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-0.5">{label}</p>
+              <p className="text-xs text-slate-200 font-medium">{value}</p>
+            </div>
+          ))}
+        </div>
+
+        {(booking.notes || booking.special_requests) && (
+          <div className="space-y-2">
+            {booking.notes && (
+              <div className="bg-white/[0.03] rounded-xl px-3 py-2.5">
+                <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Notes</p>
+                <p className="text-xs text-slate-300">{booking.notes}</p>
+              </div>
+            )}
+            {booking.special_requests && (
+              <div className="bg-white/[0.03] rounded-xl px-3 py-2.5">
+                <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Special Requests</p>
+                <p className="text-xs text-slate-300">{booking.special_requests}</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Quotes section */}
+        {canManageQuotes && (
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="text-sm font-semibold text-white">Supplier Quotes ({quotes.length})</h4>
+              {booking.status !== 'approved' && booking.status !== 'completed' && booking.status !== 'cancelled' && (
+                <button onClick={() => setShowAddQuote(!showAddQuote)} className="btn-secondary text-xs py-1.5 px-3">
+                  <Plus className="w-3.5 h-3.5" /> Add Quote
+                </button>
+              )}
+            </div>
+
+            {showAddQuote && (
+              <div className="glass rounded-xl p-4 mb-3 border border-white/10 space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] text-slate-400 mb-1 block">Supplier</label>
+                    <select value={newQuote.supplier_id} onChange={(e) => setNewQuote((p) => ({ ...p, supplier_id: e.target.value }))} className="input-dark text-xs">
+                      {suppliers.map((s) => <option key={s.id} value={s.id}>{s.company_name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[11px] text-slate-400 mb-1 block">Amount (USD) *</label>
+                    <input type="number" min={0} value={newQuote.amount_usd} onChange={(e) => setNewQuote((p) => ({ ...p, amount_usd: +e.target.value }))}
+                      className="input-dark text-xs" />
+                  </div>
+                  <div>
+                    <label className="text-[11px] text-slate-400 mb-1 block">Vehicle Model</label>
+                    <input value={newQuote.vehicle_model} onChange={(e) => setNewQuote((p) => ({ ...p, vehicle_model: e.target.value }))}
+                      placeholder="e.g. Toyota Camry" className="input-dark text-xs" />
+                  </div>
+                  <div className="flex items-end">
+                    <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-400">
+                      <input type="checkbox" checked={newQuote.includes_driver} onChange={(e) => setNewQuote((p) => ({ ...p, includes_driver: e.target.checked }))} />
+                      Includes driver
+                    </label>
+                  </div>
+                </div>
+                <div className="flex gap-2 justify-end">
+                  <button onClick={() => setShowAddQuote(false)} className="btn-secondary text-xs py-1.5 px-3">Cancel</button>
+                  <button onClick={handleAddQuote} disabled={addingQuote || !newQuote.amount_usd} className="btn-primary text-xs py-1.5 px-3">
+                    {addingQuote ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                    Save Quote
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {quotes.length === 0 ? (
+              <p className="text-xs text-slate-500 py-3 text-center">No quotes added yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {quotes.map((q) => {
+                  const supplier = (q.suppliers as Supplier | undefined) ?? suppliers.find((s) => s.id === q.supplier_id)
+                  const isCheapest = q.id === cheapest?.id
+                  const isBestValue = q.id === bestValue?.id
+                  return (
+                    <div key={q.id} className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${q.is_selected ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-white/8 bg-white/[0.02]'}`}>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <p className="text-xs font-semibold text-slate-200">{supplier?.company_name ?? 'Unknown'}</p>
+                          {isCheapest && <Badge variant="success" className="text-[10px] py-0 px-1.5">Cheapest</Badge>}
+                          {isBestValue && !isCheapest && <Badge variant="info" className="text-[10px] py-0 px-1.5">Best Value</Badge>}
+                          {q.is_selected && <Badge variant="success" className="text-[10px] py-0 px-1.5"><Check className="w-2.5 h-2.5" /> Selected</Badge>}
+                        </div>
+                        <div className="flex items-center gap-3 text-[11px] text-slate-500">
+                          {supplier?.rating && (
+                            <span className="flex items-center gap-0.5"><Star className="w-2.5 h-2.5 text-amber-400" /> {supplier.rating}</span>
+                          )}
+                          {q.vehicle_model && <span>{q.vehicle_model}</span>}
+                          {q.includes_driver && <span className="text-amber-400">+ driver</span>}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-bold text-white">{formatCurrency(q.amount_usd)}</p>
+                        {booking.budget_usd && (
+                          <p className={`text-[10px] ${q.amount_usd <= booking.budget_usd ? 'text-emerald-400' : 'text-red-400'}`}>
+                            {q.amount_usd <= booking.budget_usd ? '✓ in budget' : '⚠ over budget'}
+                          </p>
+                        )}
+                      </div>
+                      {!q.is_selected && booking.status !== 'approved' && booking.status !== 'completed' && (
+                        <button onClick={() => handleSelectQuote(q.id)} className="btn-secondary text-xs py-1 px-2.5 shrink-0">
+                          Select
+                        </button>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* AI Email Draft */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="text-sm font-semibold text-white flex items-center gap-2">
+              <Mail className="w-4 h-4" /> Supplier Email Draft
+            </h4>
+            <button onClick={generateEmailDraft} disabled={aiLoading} className="btn-secondary text-xs py-1.5 px-3">
+              {aiLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+              Generate
+            </button>
+          </div>
+          {emailDraft ? (
+            <div className="bg-black/20 rounded-xl p-3 border border-white/8">
+              <pre className="text-[11px] text-slate-300 whitespace-pre-wrap font-sans">{emailDraft}</pre>
+              <button
+                onClick={() => navigator.clipboard.writeText(emailDraft).then(() => toast('Copied!', 'success'))}
+                className="mt-2 text-xs text-fleet-400 hover:text-fleet-300 transition-colors"
+              >
+                Copy to clipboard
+              </button>
+            </div>
+          ) : (
+            <p className="text-xs text-slate-500 py-2">Click Generate to draft a supplier inquiry email using AI.</p>
+          )}
+        </div>
+      </div>
+    </Modal>
+  )
+}
