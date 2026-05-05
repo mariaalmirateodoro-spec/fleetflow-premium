@@ -25,6 +25,7 @@ export function SuppliersClient({ initialSuppliers, profile }: Props) {
   const [search, setSearch] = useState('')
   const [availableOnly, setAvailableOnly] = useState(false)
   const [view, setView] = useState<'grid' | 'table'>('grid')
+  const [confirmDelete, setConfirmDelete] = useState<Supplier | null>(null)
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase()
@@ -52,11 +53,16 @@ export function SuppliersClient({ initialSuppliers, profile }: Props) {
     await refresh()
   }
 
-  async function deleteSupplier(id: string) {
-    if (!confirm('Delete this supplier?')) return
+  async function deleteSupplier(supplier: Supplier) {
+    setConfirmDelete(supplier)
+  }
+
+  async function confirmDeleteSupplier() {
+    if (!confirmDelete) return
     const supabase = createClient()
-    await supabase.from('suppliers').delete().eq('id', id)
-    toast('Supplier deleted', 'success')
+    await supabase.from('suppliers').delete().eq('id', confirmDelete.id)
+    toast(`${confirmDelete.company_name} deleted`, 'success')
+    setConfirmDelete(null)
     await refresh()
   }
 
@@ -187,7 +193,7 @@ export function SuppliersClient({ initialSuppliers, profile }: Props) {
                     {supplier.is_available ? 'Deactivate' : 'Activate'}
                   </button>
                   {profile.role === 'admin' && (
-                    <button onClick={() => deleteSupplier(supplier.id)} className="btn-danger py-1.5 px-3 text-xs">Del</button>
+                    <button onClick={() => deleteSupplier(supplier)} className="btn-danger py-1.5 px-3 text-xs">Del</button>
                   )}
                 </div>
               )}
@@ -230,7 +236,7 @@ export function SuppliersClient({ initialSuppliers, profile }: Props) {
                         <div className="flex gap-1">
                           <button onClick={() => { setSelected(s); setShowModal(true) }} className="text-xs px-2 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 transition-colors">Edit</button>
                           {profile.role === 'admin' && (
-                            <button onClick={() => deleteSupplier(s.id)} className="text-xs px-2 py-1 rounded-lg bg-red-500/5 hover:bg-red-500/15 text-red-400 transition-colors">Del</button>
+                            <button onClick={() => deleteSupplier(s)} className="text-xs px-2 py-1 rounded-lg bg-red-500/5 hover:bg-red-500/15 text-red-400 transition-colors">Del</button>
                           )}
                         </div>
                       )}
@@ -250,6 +256,44 @@ export function SuppliersClient({ initialSuppliers, profile }: Props) {
           supplier={selected}
           onSuccess={async () => { setShowModal(false); await refresh(); toast(selected ? 'Supplier updated!' : 'Supplier added!', 'success') }}
         />
+      )}
+
+      {/* Delete confirmation modal */}
+      {confirmDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setConfirmDelete(null)} />
+          <div className="relative glass border border-white/10 rounded-2xl p-6 w-full max-w-sm shadow-2xl animate-slide-up">
+            <div className="flex items-center justify-center w-12 h-12 rounded-full bg-red-500/10 border border-red-500/20 mx-auto mb-4">
+              <span className="text-2xl">🗑️</span>
+            </div>
+            <h3 className="text-base font-semibold text-white text-center mb-1">Delete Supplier?</h3>
+            <p className="text-sm text-slate-400 text-center mb-1">
+              You are about to permanently delete
+            </p>
+            <p className="text-sm font-semibold text-white text-center mb-4">
+              &ldquo;{confirmDelete.company_name}&rdquo;
+            </p>
+            <div className="bg-red-500/5 border border-red-500/20 rounded-xl px-4 py-3 mb-5">
+              <p className="text-xs text-red-400 text-center">
+                ⚠️ This action cannot be undone. All data for this supplier will be permanently removed.
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConfirmDelete(null)}
+                className="btn-secondary flex-1"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDeleteSupplier}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white text-sm font-semibold transition-colors"
+              >
+                Yes, Delete
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   )
