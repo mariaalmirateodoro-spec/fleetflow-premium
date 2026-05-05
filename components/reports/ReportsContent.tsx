@@ -61,7 +61,7 @@ export function ReportsContent({ monthlyData, topSuppliers, savingsData, frequen
         </div>
 
         <div className="card">
-          <h3 className="text-sm font-semibold text-white mb-4">Monthly Spend (USD)</h3>
+          <h3 className="text-sm font-semibold text-white mb-4">Monthly Spend (PHP)</h3>
           <div className="h-56">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={monthlyData}>

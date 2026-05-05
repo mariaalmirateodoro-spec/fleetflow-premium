@@ -181,7 +181,7 @@ export function BookingModal({ open, onClose, booking, suppliers, profile, onSuc
             </select>
           </div>
           <div>
-            <label className="block text-xs text-slate-400 mb-1.5 font-medium">Budget (USD)</label>
+            <label className="block text-xs text-slate-400 mb-1.5 font-medium">Budget (PHP)</label>
             <input type="number" min={0} value={form.budget_usd ?? ''} onChange={(e) => update('budget_usd', e.target.value ? +e.target.value : undefined)}
               placeholder="Optional" className="input-dark" />
           </div>

@@ -139,7 +139,7 @@ export function SupplierModal({ open, onClose, supplier, onSuccess }: Props) {
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="text-xs text-slate-400 mb-1.5 block font-medium">Base Rate (USD/trip)</label>
+            <label className="text-xs text-slate-400 mb-1.5 block font-medium">Base Rate (PHP/trip)</label>
             <input type="number" min={0} value={form.base_rate_usd} onChange={(e) => setForm((p) => ({ ...p, base_rate_usd: e.target.value }))}
               placeholder="e.g. 120" className="input-dark" />
           </div>

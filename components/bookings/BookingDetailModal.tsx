@@ -208,7 +208,7 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
                     </select>
                   </div>
                   <div>
-                    <label className="text-[11px] text-slate-400 mb-1 block">Amount (USD) *</label>
+                    <label className="text-[11px] text-slate-400 mb-1 block">Amount (PHP) *</label>
                     <input type="number" min={0} value={newQuote.amount_usd} onChange={(e) => setNewQuote((p) => ({ ...p, amount_usd: +e.target.value }))}
                       className="input-dark text-xs" />
                   </div>

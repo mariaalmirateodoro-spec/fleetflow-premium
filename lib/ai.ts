@@ -114,7 +114,7 @@ BOOKING DETAILS:
 • Pick-up: ${booking.pickup_location}
 • Date & Time: ${pickupDate} at ${pickupTime}
 • Drop-off: ${booking.dropoff_location}
-${booking.budget_usd ? `• Budget: USD ${booking.budget_usd}` : ''}
+${booking.budget_usd ? `• Budget: PHP ${booking.budget_usd}` : ''}
 ${booking.notes ? `• Special Notes: ${booking.notes}` : ''}
 
 Could you please provide your best quote at your earliest convenience? We would appreciate a response within 24 hours.
@@ -137,5 +137,5 @@ export async function summarizeBooking(booking: Booking): Promise<string> {
   const daysUntil = Math.ceil((date.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
   const timeframe = daysUntil > 0 ? `in ${daysUntil} day${daysUntil > 1 ? 's' : ''}` : 'in the past'
 
-  return `Booking ${booking.reference_number}: ${booking.guest_name} (${booking.guest_nationality}) — ${booking.guest_count} guest${booking.guest_count > 1 ? 's' : ''} — requires a ${booking.vehicle_type}${booking.driver_required ? ' with driver' : ''} from ${booking.pickup_location} to ${booking.dropoff_location}, ${timeframe}. Status: ${booking.status.toUpperCase()}${booking.budget_usd ? `. Budget: $${booking.budget_usd}` : ''}.${booking.notes ? ` Notes: ${booking.notes}` : ''}`
+  return `Booking ${booking.reference_number}: ${booking.guest_name} (${booking.guest_nationality}) — ${booking.guest_count} guest${booking.guest_count > 1 ? 's' : ''} — requires a ${booking.vehicle_type}${booking.driver_required ? ' with driver' : ''} from ${booking.pickup_location} to ${booking.dropoff_location}, ${timeframe}. Status: ${booking.status.toUpperCase()}${booking.budget_usd ? `. Budget: PHP ${booking.budget_usd}` : ''}.${booking.notes ? ` Notes: ${booking.notes}` : ''}`
 }

@@ -33,9 +33,9 @@ export function timeAgo(dateStr: string) {
 }
 
 // ─── Currency helpers ────────────────────────────────────────
-export function formatCurrency(amount: number | null | undefined, currency = 'USD') {
+export function formatCurrency(amount: number | null | undefined, currency = 'PHP') {
   if (amount === null || amount === undefined) return '—'
-  return new Intl.NumberFormat('en-US', {
+  return new Intl.NumberFormat('en-PH', {
     style: 'currency',
     currency,
     minimumFractionDigits: 0,

@@ -120,7 +120,7 @@ export function DashboardContent({ data, profile }: Props) {
               <h3 className="text-sm font-semibold text-white">Monthly Spend</h3>
               <p className="text-xs text-slate-400">Last 6 months</p>
             </div>
-            <span className="badge bg-fleet-500/10 text-fleet-400 border border-fleet-500/20">USD</span>
+            <span className="badge bg-fleet-500/10 text-fleet-400 border border-fleet-500/20">PHP</span>
           </div>
           <div className="h-48">
             <ResponsiveContainer width="100%" height="100%">
