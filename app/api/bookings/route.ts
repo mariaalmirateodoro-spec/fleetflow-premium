@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
       .range(offset, offset + limit - 1)
 
     if (status) query = query.eq('status', status)
-    if (search) query = query.or(`guest_name.ilike.%${search}%,reference.ilike.%${search}%`)
+    if (search) query = query.or(`guest_name.ilike.%${search}%,reference_number.ilike.%${search}%`)
 
     const { data, error, count } = await query
     if (error) return NextResponse.json({ error: error.message }, { status: 400 })
