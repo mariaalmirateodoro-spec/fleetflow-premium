@@ -56,10 +56,10 @@ export function ApprovalsClient({ pendingBookings, recentApprovals, profile }: P
       actionModal.action === 'rejected' ? 'Booking Rejected' : 'Revision Requested'
     const notifMsg =
       actionModal.action === 'approved'
-        ? `Your booking ${actionModal.booking.reference_number_number} has been approved.`
+        ? `Your booking ${actionModal.booking.reference_number} has been approved.`
         : actionModal.action === 'rejected'
-        ? `Your booking ${actionModal.booking.reference_number_number} was rejected. ${comments ? 'Reason: ' + comments : ''}`
-        : `Your booking ${actionModal.booking.reference_number_number} needs revision. ${comments ? 'Notes: ' + comments : ''}`
+        ? `Your booking ${actionModal.booking.reference_number} was rejected. ${comments ? 'Reason: ' + comments : ''}`
+        : `Your booking ${actionModal.booking.reference_number} needs revision. ${comments ? 'Notes: ' + comments : ''}`
 
     await supabase.from('notifications').insert({
       user_id: actionModal.booking.created_by,
@@ -253,7 +253,7 @@ export function ApprovalsClient({ pendingBookings, recentApprovals, profile }: P
           open={!!actionModal}
           onClose={() => { setActionModal(null); setComments('') }}
           title={actionConfig[actionModal.action].label}
-          subtitle={`Booking ${actionModal.booking.reference_number_number} · ${actionModal.booking.guest_name}`}
+          subtitle={`Booking ${actionModal.booking.reference_number} · ${actionModal.booking.guest_name}`}
           size="md"
         >
           <div className="space-y-4">
