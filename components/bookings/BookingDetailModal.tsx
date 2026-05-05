@@ -130,7 +130,7 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
   const canManageQuotes = ['admin', 'manager', 'staff'].includes(profile.role)
 
   return (
-    <Modal open={open} onClose={onClose} title={`Booking ${booking.reference}`} subtitle={`${booking.guest_name} · ${booking.guest_nationality}`} size="2xl">
+    <Modal open={open} onClose={onClose} title={`Booking ${booking.reference_number}`} subtitle={`${booking.guest_name} · ${booking.guest_nationality}`} size="2xl">
       <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
         {/* Status + actions */}
         <div className="flex items-center justify-between">

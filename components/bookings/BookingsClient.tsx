@@ -38,7 +38,7 @@ export function BookingsClient({ initialBookings, suppliers, profile }: Props) {
       const matchesSearch =
         !q ||
         b.guest_name.toLowerCase().includes(q) ||
-        b.reference.toLowerCase().includes(q) ||
+        b.reference_number.toLowerCase().includes(q) ||
         b.pickup_location.toLowerCase().includes(q) ||
         b.dropoff_location.toLowerCase().includes(q) ||
         b.guest_nationality.toLowerCase().includes(q)
@@ -88,7 +88,7 @@ export function BookingsClient({ initialBookings, suppliers, profile }: Props) {
   function exportCSV() {
     const headers = ['Reference', 'Guest', 'Nationality', 'Pickup', 'Dropoff', 'Vehicle', 'Driver', 'Budget', 'Status']
     const rows = filtered.map((b) => [
-      b.reference, b.guest_name, b.guest_nationality,
+      b.reference_number, b.guest_name, b.guest_nationality,
       b.pickup_location, b.dropoff_location,
       vehicleLabels[b.vehicle_type], b.driver_required ? 'Yes' : 'No',
       b.budget_usd ?? '', b.status,
@@ -220,7 +220,7 @@ export function BookingsClient({ initialBookings, suppliers, profile }: Props) {
                       onClick={() => handleRowClick(booking)}
                     >
                       <td className="px-4 py-3.5">
-                        <span className="font-mono text-xs text-fleet-400 font-semibold">{booking.reference}</span>
+                        <span className="font-mono text-xs text-fleet-400 font-semibold">{booking.reference_number}</span>
                       </td>
                       <td className="px-4 py-3.5">
                         <div>

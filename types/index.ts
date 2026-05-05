@@ -47,10 +47,12 @@ export interface Supplier {
 
 export interface Booking {
   id: string
-  reference: string
+  reference_number: string
   guest_name: string
   guest_nationality: string
   guest_count: number
+  guest_phone: string | null
+  guest_email: string | null
   pickup_datetime: string
   dropoff_datetime: string | null
   pickup_location: string
@@ -63,7 +65,7 @@ export interface Booking {
   notes: string | null
   special_requests: string | null
   assigned_supplier: string | null
-  created_by: string
+  created_by: string | null
   approved_by: string | null
   approved_at: string | null
   completed_at: string | null

@@ -56,10 +56,10 @@ export function ApprovalsClient({ pendingBookings, recentApprovals, profile }: P
       actionModal.action === 'rejected' ? 'Booking Rejected' : 'Revision Requested'
     const notifMsg =
       actionModal.action === 'approved'
-        ? `Your booking ${actionModal.booking.reference} has been approved.`
+        ? `Your booking ${actionModal.booking.reference_number_number} has been approved.`
         : actionModal.action === 'rejected'
-        ? `Your booking ${actionModal.booking.reference} was rejected. ${comments ? 'Reason: ' + comments : ''}`
-        : `Your booking ${actionModal.booking.reference} needs revision. ${comments ? 'Notes: ' + comments : ''}`
+        ? `Your booking ${actionModal.booking.reference_number_number} was rejected. ${comments ? 'Reason: ' + comments : ''}`
+        : `Your booking ${actionModal.booking.reference_number_number} needs revision. ${comments ? 'Notes: ' + comments : ''}`
 
     await supabase.from('notifications').insert({
       user_id: actionModal.booking.created_by,
@@ -113,7 +113,7 @@ export function ApprovalsClient({ pendingBookings, recentApprovals, profile }: P
                         </div>
                         <div>
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-mono text-xs text-fleet-400 font-semibold">{booking.reference}</span>
+                            <span className="font-mono text-xs text-fleet-400 font-semibold">{booking.reference_number}</span>
                             <StatusBadge status={booking.status} />
                             {quotes.length > 0 && <Badge variant="info" className="text-[10px]">{quotes.length} quote{quotes.length > 1 ? 's' : ''}</Badge>}
                           </div>
@@ -253,7 +253,7 @@ export function ApprovalsClient({ pendingBookings, recentApprovals, profile }: P
           open={!!actionModal}
           onClose={() => { setActionModal(null); setComments('') }}
           title={actionConfig[actionModal.action].label}
-          subtitle={`Booking ${actionModal.booking.reference} · ${actionModal.booking.guest_name}`}
+          subtitle={`Booking ${actionModal.booking.reference_number_number} · ${actionModal.booking.guest_name}`}
           size="md"
         >
           <div className="space-y-4">

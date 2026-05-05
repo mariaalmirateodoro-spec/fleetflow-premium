@@ -227,7 +227,7 @@ export function DashboardContent({ data, profile }: Props) {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs text-slate-300">
-                        <span className="font-medium">{booking.reference}</span>{' '}
+                        <span className="font-medium">{booking.reference_number}</span>{' '}
                         <span className="text-slate-500">·</span>{' '}
                         {booking.guest_name}
                       </p>
