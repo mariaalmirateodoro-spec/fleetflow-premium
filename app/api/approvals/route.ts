@@ -75,12 +75,12 @@ export async function POST(request: NextRequest) {
       rejected: 'rejected',
       revision_requested: 'sent back for revision',
     }
-    await createNotification(supabase, {
-      user_id: booking.created_by,
+    await createNotification({
+      userId: booking.created_by,
       title: `Booking ${actionLabels[action] ?? action}`,
       message: `Booking ${booking.reference_number} has been ${actionLabels[action] ?? action}.${comments ? ` Comment: ${comments}` : ''}`,
-      type: action === 'approved' ? 'success' : action === 'rejected' ? 'error' : 'info',
-      booking_id,
+      type: action === 'approved' ? 'approved' : 'system',
+      bookingId: booking_id,
     })
   }
 
