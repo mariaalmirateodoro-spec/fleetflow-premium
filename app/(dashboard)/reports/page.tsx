@@ -62,7 +62,7 @@ export default async function ReportsPage() {
   const savingsData = allBookings
     .filter((b) => b.budget_usd && b.final_cost_usd && b.status === 'completed')
     .map((b) => ({
-      reference: b.reference_number,
+      reference_number: b.reference_number,
       budget: b.budget_usd!,
       actual: b.final_cost_usd!,
       savings: b.budget_usd! - b.final_cost_usd!,

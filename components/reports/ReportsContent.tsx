@@ -9,7 +9,7 @@ import {
 interface Props {
   monthlyData: { month: string; bookings: number; spend: number }[]
   topSuppliers: { name: string; bookings: number; revenue: number; rating: number }[]
-  savingsData: { reference: string; budget: number; actual: number; savings: number }[]
+  savingsData: { reference_number: string; budget: number; actual: number; savings: number }[]
   frequentRoutes: { route: string; count: number }[]
   statusData: { status: string; count: number }[]
   summary: { totalSpend: number; totalSavings: number; completedCount: number; cancelledCount: number; totalBookings: number }
@@ -126,7 +126,7 @@ export function ReportsContent({ monthlyData, topSuppliers, savingsData, frequen
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={savingsData} barSize={8}>
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                  <XAxis dataKey="reference" tick={{ fill: '#64748b', fontSize: 9 }} axisLine={false} tickLine={false} />
+                  <XAxis dataKey="reference_number" tick={{ fill: '#64748b', fontSize: 9 }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={(v) => `$${v}`} />
                   <Tooltip {...tooltipStyle} formatter={(v: number) => [formatCurrency(v)]} />
                   <Bar dataKey="budget" fill="#6366f1" radius={[4,4,0,0]} name="Budget" />

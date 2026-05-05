@@ -216,7 +216,7 @@ export function ApprovalsClient({ pendingBookings, recentApprovals, profile }: P
             <div className="divide-y divide-white/5">
               {recentApprovals.map((approval) => {
                 const reviewer = approval.profiles as { full_name?: string } | undefined
-                const booking = approval.bookings as { reference?: string; guest_name?: string } | undefined
+                const booking = approval.bookings as { reference_number?: string; guest_name?: string } | undefined
                 return (
                   <div key={approval.id} className="flex items-center gap-3 px-4 py-3 hover:bg-white/[0.02] transition-colors">
                     <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
