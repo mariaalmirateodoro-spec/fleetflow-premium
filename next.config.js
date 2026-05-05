@@ -8,9 +8,7 @@ const nextConfig = {
       },
     ],
   },
-  experimental: {
-    serverComponentsExternalPackages: ['@supabase/ssr'],
-  },
+  serverExternalPackages: ['@supabase/ssr'],
 }
 
 module.exports = nextConfig
