@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
     // Notify managers
     await notifyManagers(
       'New Transport Request',
-      `New booking ${data.reference} for ${data.guest_name} requires review.`,
+      `New booking ${data.reference_number} for ${data.guest_name} requires review.`,
       data.id
     )
 

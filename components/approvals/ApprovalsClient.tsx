@@ -232,7 +232,7 @@ export function ApprovalsClient({ pendingBookings, recentApprovals, profile }: P
                       <p className="text-xs text-slate-300">
                         <span className="font-medium">{reviewer?.full_name ?? 'Manager'}</span>
                         {' '}<span className="text-slate-500">{approval.action.replace('_', ' ')}</span>{' '}
-                        <span className="font-mono text-fleet-400">{booking?.reference ?? '—'}</span>
+                        <span className="font-mono text-fleet-400">{booking?.reference_number ?? '—'}</span>
                       </p>
                       {approval.comments && (
                         <p className="text-[11px] text-slate-500 truncate">"{approval.comments}"</p>
