@@ -57,11 +57,12 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
 
   async function loadQuotes() {
     const supabase = createClient()
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('quotes')
       .select('*, suppliers(*)')
       .eq('booking_id', booking.id)
       .order('amount_usd', { ascending: true })
+    if (error) console.error('[loadQuotes]', error)
     if (data) setQuotes(data)
   }
 
@@ -83,7 +84,7 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
   async function handleAddQuote() {
     setAddingQuote(true)
     const supabase = createClient()
-    await supabase.from('quotes').insert({
+    const { error } = await supabase.from('quotes').insert({
       booking_id: booking.id,
       supplier_id: newQuote.supplier_id,
       amount_usd: newQuote.amount_usd,
@@ -92,6 +93,12 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
       notes: newQuote.notes || null,
       created_by: profile.id,
     })
+    if (error) {
+      console.error('[handleAddQuote]', error)
+      toast(`Failed to save quote: ${error.message}`, 'error')
+      setAddingQuote(false)
+      return
+    }
     toast('Quote added!', 'success')
     setShowAddQuote(false)
     await loadQuotes()
