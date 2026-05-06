@@ -59,7 +59,7 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
     const supabase = createClient()
     const { data, error } = await supabase
       .from('quotes')
-      .select('*, suppliers(*)')
+      .select('*')
       .eq('booking_id', booking.id)
       .order('amount_usd', { ascending: true })
     if (error) console.error('[loadQuotes]', error)
@@ -320,7 +320,7 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
             ) : (
               <div className="space-y-2">
                 {quotes.map((q) => {
-                  const supplier = (q.suppliers as Supplier | undefined) ?? suppliers.find((s) => s.id === q.supplier_id)
+                  const supplier = suppliers.find((s) => s.id === q.supplier_id)
                   const isCheapest = q.id === cheapest?.id
                   const isBestValue = q.id === bestValue?.id
                   return (
