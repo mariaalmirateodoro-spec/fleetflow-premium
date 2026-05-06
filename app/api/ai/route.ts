@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { suggestVehicle, recommendSupplier, draftSupplierEmail, summarizeBooking, generateViberMessage } from '@/lib/ai'
+import { suggestVehicle, recommendSupplier, draftSupplierEmail, summarizeBooking, generateViberMessage, draftGuestEmail } from '@/lib/ai'
 
 export async function POST(request: NextRequest) {
   try {
@@ -41,6 +41,12 @@ export async function POST(request: NextRequest) {
         const { booking, supplier } = body
         const message = generateViberMessage(booking, supplier)
         return NextResponse.json({ message })
+      }
+
+      case 'guest_email': {
+        const { booking, selectedQuote } = body
+        const email = draftGuestEmail(booking, selectedQuote ?? null)
+        return NextResponse.json({ email })
       }
 
       default:

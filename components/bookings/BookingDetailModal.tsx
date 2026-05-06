@@ -26,6 +26,10 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
   const [aiLoading, setAiLoading] = useState(false)
   const [addingQuote, setAddingQuote] = useState(false)
 
+  // Guest notification state
+  const [guestEmailDraft, setGuestEmailDraft] = useState('')
+  const [guestEmailLoading, setGuestEmailLoading] = useState(false)
+
   // Contact supplier state
   const [contactTab, setContactTab] = useState<'email' | 'viber'>('email')
   const [selectedSupplierId, setSelectedSupplierId] = useState(suppliers[0]?.id ?? '')
@@ -153,6 +157,32 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
     // Clean phone number for Viber deep link
     const phone = supplier.phone.replace(/[\s\-\(\)]/g, '')
     window.open(`viber://chat?number=${encodeURIComponent(phone)}`, '_blank')
+  }
+
+  async function generateGuestEmail() {
+    setGuestEmailLoading(true)
+    const selectedQuote = quotes.find((q) => q.is_selected) ?? null
+    try {
+      const res = await fetch('/api/ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'guest_email', booking, selectedQuote }),
+      })
+      const data = await res.json()
+      setGuestEmailDraft(data.email ?? '')
+    } catch {
+      setGuestEmailDraft('Failed to generate. Please try again.')
+    }
+    setGuestEmailLoading(false)
+  }
+
+  function sendGuestEmail() {
+    if (!booking.guest_email || !guestEmailDraft) return
+    const lines = guestEmailDraft.split('\n')
+    const subjectLine = lines[0].replace('Subject: ', '')
+    const body = lines.slice(2).join('\n')
+    const mailto = `mailto:${booking.guest_email}?subject=${encodeURIComponent(subjectLine)}&body=${encodeURIComponent(body)}`
+    window.open(mailto, '_blank')
   }
 
   const cheapest = quotes.length > 0 ? quotes[0] : null
@@ -319,6 +349,59 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
                 })}
               </div>
             )}
+          </div>
+        )}
+
+        {/* ── Notify Guest ── */}
+        {booking.guest_email && booking.status !== 'cancelled' && (
+          <div className="border border-white/10 rounded-2xl overflow-hidden">
+            <div className="px-4 py-3 bg-white/[0.03] border-b border-white/8 flex items-center justify-between">
+              <div>
+                <h4 className="text-sm font-semibold text-white">Notify Guest</h4>
+                <p className="text-[11px] text-slate-500 mt-0.5">Send a booking update to the guest's email</p>
+              </div>
+              <span className="text-[11px] text-slate-400 bg-white/[0.04] px-2 py-1 rounded-lg truncate max-w-[180px]">
+                ✉️ {booking.guest_email}
+              </span>
+            </div>
+            <div className="p-4 space-y-3">
+              <button
+                onClick={generateGuestEmail}
+                disabled={guestEmailLoading}
+                className="w-full btn-secondary text-xs py-2 flex items-center justify-center gap-2 disabled:opacity-40"
+              >
+                {guestEmailLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                {guestEmailLoading ? 'Generating…' : quotes.some(q => q.is_selected) ? 'Generate Confirmation Email' : 'Generate Booking Update Email'}
+              </button>
+
+              {guestEmailDraft ? (
+                <>
+                  <div className="bg-black/20 rounded-xl p-3 border border-white/8">
+                    <pre className="text-[11px] text-slate-300 whitespace-pre-wrap font-sans leading-relaxed max-h-40 overflow-y-auto">{guestEmailDraft}</pre>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => navigator.clipboard.writeText(guestEmailDraft).then(() => toast('Copied!', 'success'))}
+                      className="btn-secondary text-xs py-2 px-3 flex items-center gap-1.5 shrink-0"
+                    >
+                      <Copy className="w-3.5 h-3.5" /> Copy
+                    </button>
+                    <button
+                      onClick={sendGuestEmail}
+                      className="btn-primary text-xs py-2 px-4 flex items-center gap-1.5 flex-1 justify-center"
+                    >
+                      <Send className="w-3.5 h-3.5" /> Send to Guest
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <p className="text-[11px] text-slate-500 text-center">
+                  {quotes.some(q => q.is_selected)
+                    ? 'Generates a confirmation email with vehicle and cost details.'
+                    : 'Generates an update email letting the guest know their booking is being processed.'}
+                </p>
+              )}
+            </div>
           </div>
         )}
 

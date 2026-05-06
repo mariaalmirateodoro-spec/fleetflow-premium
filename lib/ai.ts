@@ -3,7 +3,7 @@
 // Replace with real OpenAI calls when API key is configured
 // ============================================================
 
-import type { AISuggestion, Booking, Supplier, VehicleType } from '@/types'
+import type { AISuggestion, Booking, Quote, Supplier, VehicleType } from '@/types'
 
 const OPENAI_AVAILABLE = !!process.env.OPENAI_API_KEY
 
@@ -149,6 +149,66 @@ We have a transport booking and would like your quote:
 
 Please reply with your best rate ASAP. Thank you! 🙏
 — FleetFlow Team`
+}
+
+// ─── Guest notification email ────────────────────────────────
+export function draftGuestEmail(booking: Booking, selectedQuote?: Quote | null): string {
+  const pickupDate = new Date(booking.pickup_datetime).toLocaleDateString('en-PH', {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+  })
+  const pickupTime = new Date(booking.pickup_datetime).toLocaleTimeString('en-PH', {
+    hour: '2-digit', minute: '2-digit',
+  })
+  const vehicleLabel = booking.vehicle_type.charAt(0).toUpperCase() + booking.vehicle_type.slice(1)
+
+  if (selectedQuote) {
+    return `Subject: Booking Confirmed – ${booking.reference_number}
+
+Dear ${booking.guest_name},
+
+Great news! Your transport booking has been confirmed. Here are your final details:
+
+✅ BOOKING CONFIRMATION
+• Reference No.: ${booking.reference_number}
+• Vehicle: ${selectedQuote.vehicle_model ? selectedQuote.vehicle_model : vehicleLabel}${booking.driver_required ? ' with driver' : ''}
+• Passengers: ${booking.guest_count} pax
+• Pick-up: ${booking.pickup_location}
+• Drop-off: ${booking.dropoff_location}
+• Date & Time: ${pickupDate} at ${pickupTime}
+${selectedQuote.amount_usd ? `• Total Cost: PHP ${selectedQuote.amount_usd.toLocaleString()}` : ''}
+${booking.special_requests ? `• Special Requests: ${booking.special_requests}` : ''}
+
+Please be at the pick-up location at least 5 minutes before your scheduled time. Your driver will be waiting for you.
+
+For any questions or changes, please contact us immediately.
+
+Warm regards,
+FleetFlow Premium – Guest Transport Operations
+Email: operations@fleetflow.com`
+  }
+
+  return `Subject: Booking Update – ${booking.reference_number}
+
+Dear ${booking.guest_name},
+
+Thank you for choosing FleetFlow Premium. Your transport booking has been received and is currently being processed.
+
+📋 BOOKING DETAILS
+• Reference No.: ${booking.reference_number}
+• Vehicle: ${vehicleLabel}${booking.driver_required ? ' with driver' : ''}
+• Passengers: ${booking.guest_count} pax
+• Pick-up: ${booking.pickup_location}
+• Drop-off: ${booking.dropoff_location}
+• Date & Time: ${pickupDate} at ${pickupTime}
+${booking.special_requests ? `• Special Requests: ${booking.special_requests}` : ''}
+
+We are currently confirming vehicle availability and will send you a confirmation with final details shortly.
+
+For any questions, please do not hesitate to contact us.
+
+Warm regards,
+FleetFlow Premium – Guest Transport Operations
+Email: operations@fleetflow.com`
 }
 
 // ─── Booking summary ─────────────────────────────────────────
