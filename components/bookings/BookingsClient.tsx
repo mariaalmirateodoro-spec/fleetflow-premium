@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { Plus, Search, Filter, Download, RefreshCw } from 'lucide-react'
+import { Plus, Search, Filter, Download, RefreshCw, Trash2 } from 'lucide-react'
 import { cn, formatDateTime, formatCurrency, vehicleLabels } from '@/lib/utils'
 import { StatusBadge } from '@/components/ui/Badge'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -31,6 +31,7 @@ export function BookingsClient({ initialBookings, suppliers, profile }: Props) {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<BookingStatus | 'all'>('all')
   const [vehicleFilter, setVehicleFilter] = useState<VehicleType | 'all'>('all')
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
   const filtered = useMemo(() => {
     return bookings.filter((b) => {
@@ -82,6 +83,18 @@ export function BookingsClient({ initialBookings, suppliers, profile }: Props) {
     } else {
       toast('Booking cancelled', 'success')
       await refresh()
+    }
+  }
+
+  async function handlePermanentDelete(bookingId: string) {
+    const supabase = createClient()
+    const { error } = await supabase.from('bookings').delete().eq('id', bookingId)
+    if (error) {
+      toast('Failed to delete booking', 'error')
+    } else {
+      toast('Booking deleted', 'success')
+      setConfirmDeleteId(null)
+      setBookings((prev) => prev.filter((b) => b.id !== bookingId))
     }
   }
 
@@ -262,6 +275,33 @@ export function BookingsClient({ initialBookings, suppliers, profile }: Props) {
                             >
                               Cancel
                             </button>
+                          )}
+                          {profile.role === 'admin' && (
+                            confirmDeleteId === booking.id ? (
+                              <div className="flex items-center gap-1">
+                                <span className="text-[11px] text-red-400">Delete?</span>
+                                <button
+                                  onClick={() => handlePermanentDelete(booking.id)}
+                                  className="text-[11px] px-2 py-0.5 rounded bg-red-500 hover:bg-red-600 text-white font-semibold transition-colors"
+                                >
+                                  Yes
+                                </button>
+                                <button
+                                  onClick={() => setConfirmDeleteId(null)}
+                                  className="text-[11px] px-2 py-0.5 rounded bg-white/10 hover:bg-white/15 text-slate-400 transition-colors"
+                                >
+                                  No
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => setConfirmDeleteId(booking.id)}
+                                className="p-1 rounded-lg hover:bg-red-500/10 text-slate-600 hover:text-red-400 transition-colors"
+                                title="Delete booking"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )
                           )}
                         </div>
                       </td>
