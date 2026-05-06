@@ -325,100 +325,140 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
         {/* ── Contact Supplier ── */}
         <div className="border border-white/10 rounded-2xl overflow-hidden">
           {/* Header */}
-          <div className="px-4 py-3 bg-white/[0.03] border-b border-white/8 flex items-center justify-between gap-3">
+          <div className="px-4 py-3 bg-white/[0.03] border-b border-white/8">
             <h4 className="text-sm font-semibold text-white">Contact Supplier</h4>
-            <button onClick={generateDrafts} disabled={aiLoading || suppliers.length === 0} className="btn-secondary text-xs py-1.5 px-3 shrink-0">
-              {aiLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-              Generate
-            </button>
+            <p className="text-[11px] text-slate-500 mt-0.5">Select a supplier, choose channel, then generate &amp; send</p>
           </div>
 
           <div className="p-4 space-y-3">
-            {/* Supplier selector */}
-            {suppliers.length > 0 ? (
-              <div>
-                <label className="text-[11px] text-slate-400 mb-1.5 block font-medium">Select Supplier to Contact</label>
-                <select
-                  value={selectedSupplierId}
-                  onChange={(e) => setSelectedSupplierId(e.target.value)}
-                  className="input-dark text-xs w-full"
-                >
-                  {suppliers.map((s) => (
-                    <option key={s.id} value={s.id}>{s.company_name} — {s.email}</option>
-                  ))}
-                </select>
+            {suppliers.length === 0 ? (
+              <p className="text-xs text-slate-500 text-center py-2">No suppliers available. Add suppliers first.</p>
+            ) : (
+              <>
+                {/* Supplier cards */}
+                <div className="space-y-1.5 max-h-44 overflow-y-auto pr-0.5">
+                  {suppliers.map((s) => {
+                    const isSelected = selectedSupplierId === s.id
+                    return (
+                      <button
+                        key={s.id}
+                        onClick={() => setSelectedSupplierId(s.id)}
+                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left transition-all ${
+                          isSelected
+                            ? 'border-fleet-500/50 bg-fleet-500/10'
+                            : 'border-white/8 bg-white/[0.02] hover:bg-white/[0.05] hover:border-white/15'
+                        }`}
+                      >
+                        {/* Radio dot */}
+                        <div className={`w-3.5 h-3.5 rounded-full border-2 shrink-0 flex items-center justify-center transition-all ${
+                          isSelected ? 'border-fleet-400' : 'border-slate-600'
+                        }`}>
+                          {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-fleet-400" />}
+                        </div>
+
+                        {/* Info */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="text-xs font-semibold text-slate-200 truncate">{s.company_name}</p>
+                            {s.is_preferred && <span className="text-[10px] text-amber-400 shrink-0">⭐ Preferred</span>}
+                          </div>
+                          <p className="text-[11px] text-slate-500 truncate">{s.contact_person}</p>
+                        </div>
+
+                        {/* Contact icons */}
+                        <div className="flex gap-2 shrink-0 text-slate-500">
+                          <span className="text-[11px]">✉️</span>
+                          <span className="text-[11px]">📞</span>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+
+                {/* Selected supplier contact info */}
                 {selectedSupplier && (
-                  <p className="text-[11px] text-slate-500 mt-1.5">📞 {selectedSupplier.phone} · ✉️ {selectedSupplier.email}</p>
+                  <div className="bg-white/[0.03] rounded-xl px-3 py-2 flex items-center gap-4 text-[11px] text-slate-400">
+                    <span className="truncate">✉️ {selectedSupplier.email}</span>
+                    <span className="shrink-0">📞 {selectedSupplier.phone}</span>
+                  </div>
                 )}
-              </div>
-            ) : (
-              <p className="text-xs text-slate-500">No suppliers available. Add suppliers first.</p>
-            )}
 
-            {/* Channel tabs */}
-            <div className="flex gap-1 bg-white/5 p-1 rounded-xl">
-              <button
-                onClick={() => setContactTab('email')}
-                className={`flex-1 flex items-center justify-center gap-1.5 text-xs py-1.5 rounded-lg transition-all ${contactTab === 'email' ? 'bg-fleet-600 text-white font-medium' : 'text-slate-400 hover:text-slate-200'}`}
-              >
-                <Mail className="w-3.5 h-3.5" /> Email
-              </button>
-              <button
-                onClick={() => setContactTab('viber')}
-                className={`flex-1 flex items-center justify-center gap-1.5 text-xs py-1.5 rounded-lg transition-all ${contactTab === 'viber' ? 'bg-[#7360f2] text-white font-medium' : 'text-slate-400 hover:text-slate-200'}`}
-              >
-                <span className="text-sm leading-none">💜</span> Viber
-              </button>
-            </div>
+                {/* Channel tabs */}
+                <div className="flex gap-1 bg-white/5 p-1 rounded-xl">
+                  <button
+                    onClick={() => setContactTab('email')}
+                    className={`flex-1 flex items-center justify-center gap-1.5 text-xs py-1.5 rounded-lg transition-all ${contactTab === 'email' ? 'bg-fleet-600 text-white font-medium' : 'text-slate-400 hover:text-slate-200'}`}
+                  >
+                    <Mail className="w-3.5 h-3.5" /> Email
+                  </button>
+                  <button
+                    onClick={() => setContactTab('viber')}
+                    className={`flex-1 flex items-center justify-center gap-1.5 text-xs py-1.5 rounded-lg transition-all ${contactTab === 'viber' ? 'bg-[#7360f2] text-white font-medium' : 'text-slate-400 hover:text-slate-200'}`}
+                  >
+                    <span className="text-sm leading-none">💜</span> Viber
+                  </button>
+                </div>
 
-            {/* Draft preview */}
-            {currentDraft ? (
-              <div className="bg-black/20 rounded-xl p-3 border border-white/8">
-                <pre className="text-[11px] text-slate-300 whitespace-pre-wrap font-sans leading-relaxed max-h-40 overflow-y-auto">{currentDraft}</pre>
-              </div>
-            ) : (
-              <div className="bg-white/[0.02] rounded-xl p-4 border border-white/5 text-center">
-                <p className="text-xs text-slate-500">
-                  {contactTab === 'email'
-                    ? 'Click Generate to draft a formal email with full booking details.'
-                    : 'Click Generate to draft a short Viber message ready to send.'}
-                </p>
-              </div>
-            )}
-
-            {/* Action buttons */}
-            <div className="flex gap-2">
-              {currentDraft && (
+                {/* Generate button */}
                 <button
-                  onClick={() => navigator.clipboard.writeText(currentDraft).then(() => toast('Copied!', 'success'))}
-                  className="btn-secondary text-xs py-2 px-3 flex items-center gap-1.5"
+                  onClick={generateDrafts}
+                  disabled={aiLoading || !selectedSupplier}
+                  className="w-full btn-secondary text-xs py-2 flex items-center justify-center gap-2 disabled:opacity-40"
                 >
-                  <Copy className="w-3.5 h-3.5" /> Copy
+                  {aiLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                  {aiLoading ? 'Generating…' : `Generate ${contactTab === 'email' ? 'Email' : 'Viber'} Message`}
                 </button>
-              )}
-              {contactTab === 'email' ? (
-                <button
-                  onClick={sendViaEmail}
-                  disabled={!emailDraft || !selectedSupplier}
-                  className="btn-primary text-xs py-2 px-4 flex items-center gap-1.5 flex-1 justify-center disabled:opacity-40"
-                >
-                  <Send className="w-3.5 h-3.5" /> Send via Email
-                </button>
-              ) : (
-                <button
-                  onClick={openViber}
-                  disabled={!selectedSupplier}
-                  className="flex-1 flex items-center justify-center gap-1.5 text-xs py-2 px-4 rounded-xl font-semibold transition-colors bg-[#7360f2] hover:bg-[#6350e2] text-white disabled:opacity-40"
-                >
-                  <span className="text-sm leading-none">💜</span> Open in Viber
-                </button>
-              )}
-            </div>
 
-            {contactTab === 'viber' && (
-              <p className="text-[11px] text-slate-500 text-center">
-                Message is copied to clipboard automatically. Paste it in the Viber chat that opens.
-              </p>
+                {/* Draft preview */}
+                {currentDraft ? (
+                  <div className="bg-black/20 rounded-xl p-3 border border-white/8">
+                    <pre className="text-[11px] text-slate-300 whitespace-pre-wrap font-sans leading-relaxed max-h-40 overflow-y-auto">{currentDraft}</pre>
+                  </div>
+                ) : (
+                  <div className="bg-white/[0.02] rounded-xl p-3 border border-white/5 text-center">
+                    <p className="text-xs text-slate-500">
+                      {contactTab === 'email'
+                        ? 'Generates a formal email with full booking details.'
+                        : 'Generates a short, friendly Viber message.'}
+                    </p>
+                  </div>
+                )}
+
+                {/* Send buttons */}
+                <div className="flex gap-2">
+                  {currentDraft && (
+                    <button
+                      onClick={() => navigator.clipboard.writeText(currentDraft).then(() => toast('Copied!', 'success'))}
+                      className="btn-secondary text-xs py-2 px-3 flex items-center gap-1.5 shrink-0"
+                    >
+                      <Copy className="w-3.5 h-3.5" /> Copy
+                    </button>
+                  )}
+                  {contactTab === 'email' ? (
+                    <button
+                      onClick={sendViaEmail}
+                      disabled={!emailDraft || !selectedSupplier}
+                      className="btn-primary text-xs py-2 px-4 flex items-center gap-1.5 flex-1 justify-center disabled:opacity-40"
+                    >
+                      <Send className="w-3.5 h-3.5" /> Send via Email
+                    </button>
+                  ) : (
+                    <button
+                      onClick={openViber}
+                      disabled={!selectedSupplier}
+                      className="flex-1 flex items-center justify-center gap-1.5 text-xs py-2 px-4 rounded-xl font-semibold transition-colors bg-[#7360f2] hover:bg-[#6350e2] text-white disabled:opacity-40"
+                    >
+                      <span className="text-sm leading-none">💜</span> Open in Viber
+                    </button>
+                  )}
+                </div>
+
+                {contactTab === 'viber' && currentDraft && (
+                  <p className="text-[11px] text-slate-500 text-center">
+                    Message is copied to clipboard automatically — just paste it in the Viber chat.
+                  </p>
+                )}
+              </>
             )}
           </div>
         </div>
