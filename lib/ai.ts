@@ -127,6 +127,30 @@ Email: operations@fleetflow.com
 `
 }
 
+// ─── Viber message draft ─────────────────────────────────────
+export function generateViberMessage(booking: Booking, supplier: Supplier): string {
+  const pickupDate = new Date(booking.pickup_datetime).toLocaleDateString('en-PH', {
+    weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
+  })
+  const pickupTime = new Date(booking.pickup_datetime).toLocaleTimeString('en-PH', {
+    hour: '2-digit', minute: '2-digit',
+  })
+
+  return `Hi ${supplier.contact_person}! 👋
+
+We have a transport booking and would like your quote:
+
+📋 Ref: ${booking.reference_number}
+👤 Guest: ${booking.guest_name} (${booking.guest_nationality}) — ${booking.guest_count} pax
+🚗 Vehicle: ${booking.vehicle_type.charAt(0).toUpperCase() + booking.vehicle_type.slice(1)}${booking.driver_required ? ' with driver' : ''}
+📍 From: ${booking.pickup_location}
+📍 To: ${booking.dropoff_location}
+📅 Date: ${pickupDate} at ${pickupTime}${booking.budget_usd ? `\n💰 Budget: PHP ${booking.budget_usd}` : ''}${booking.notes ? `\n📝 Notes: ${booking.notes}` : ''}
+
+Please reply with your best rate ASAP. Thank you! 🙏
+— FleetFlow Team`
+}
+
 // ─── Booking summary ─────────────────────────────────────────
 export async function summarizeBooking(booking: Booking): Promise<string> {
   if (OPENAI_AVAILABLE) {

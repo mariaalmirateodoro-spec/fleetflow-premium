@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Edit2, Mail, Plus, Star, Loader2, Sparkles, Check } from 'lucide-react'
+import { Edit2, Mail, Plus, Star, Loader2, Sparkles, Check, Copy, Send } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { StatusBadge, Badge } from '@/components/ui/Badge'
 import { formatDateTime, formatCurrency, vehicleLabels } from '@/lib/utils'
@@ -23,9 +23,15 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
   const { toast } = useToast()
   const [quotes, setQuotes] = useState<Quote[]>([])
   const [showAddQuote, setShowAddQuote] = useState(false)
-  const [emailDraft, setEmailDraft] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
   const [addingQuote, setAddingQuote] = useState(false)
+
+  // Contact supplier state
+  const [contactTab, setContactTab] = useState<'email' | 'viber'>('email')
+  const [selectedSupplierId, setSelectedSupplierId] = useState(suppliers[0]?.id ?? '')
+  const [emailDraft, setEmailDraft] = useState('')
+  const [viberDraft, setViberDraft] = useState('')
+
   const [newQuote, setNewQuote] = useState({
     supplier_id: suppliers[0]?.id ?? '',
     amount_usd: 0,
@@ -37,6 +43,12 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
   useEffect(() => {
     if (open) loadQuotes()
   }, [open, booking.id])
+
+  // Reset drafts when supplier changes
+  useEffect(() => {
+    setEmailDraft('')
+    setViberDraft('')
+  }, [selectedSupplierId])
 
   async function loadQuotes() {
     const supabase = createClient()
@@ -50,12 +62,9 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
 
   async function handleSelectQuote(quoteId: string) {
     const supabase = createClient()
-    // Deselect all
     await supabase.from('quotes').update({ is_selected: false }).eq('booking_id', booking.id)
-    // Select this one
     const quote = quotes.find((q) => q.id === quoteId)
     await supabase.from('quotes').update({ is_selected: true }).eq('id', quoteId)
-    // Update booking status to quoted + assign supplier
     await supabase.from('bookings').update({
       status: 'quoted',
       assigned_supplier: quote?.supplier_id,
@@ -83,9 +92,9 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
     setAddingQuote(false)
   }
 
-  async function generateEmailDraft() {
+  async function generateDrafts() {
     setAiLoading(true)
-    const supplier = suppliers[0]
+    const supplier = suppliers.find((s) => s.id === selectedSupplierId) ?? suppliers[0]
     if (!supplier) { setAiLoading(false); return }
     try {
       const res = await fetch('/api/ai', {
@@ -95,8 +104,16 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
       })
       const data = await res.json()
       setEmailDraft(data.email ?? '')
+
+      const vRes = await fetch('/api/ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'viber_message', booking, supplier }),
+      })
+      const vData = await vRes.json()
+      setViberDraft(vData.message ?? '')
     } catch {
-      setEmailDraft('Failed to generate email. Please try again.')
+      setEmailDraft('Failed to generate. Please try again.')
     }
     setAiLoading(false)
   }
@@ -115,6 +132,29 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
     setAiLoading(false)
   }
 
+  function sendViaEmail() {
+    const supplier = suppliers.find((s) => s.id === selectedSupplierId)
+    if (!supplier || !emailDraft) return
+    const lines = emailDraft.split('\n')
+    const subjectLine = lines[0].replace('Subject: ', '')
+    const body = lines.slice(2).join('\n')
+    const mailto = `mailto:${supplier.email}?subject=${encodeURIComponent(subjectLine)}&body=${encodeURIComponent(body)}`
+    window.open(mailto, '_blank')
+  }
+
+  function openViber() {
+    const supplier = suppliers.find((s) => s.id === selectedSupplierId)
+    if (!supplier) return
+    // Copy message first
+    if (viberDraft) {
+      navigator.clipboard.writeText(viberDraft).catch(() => {})
+      toast('Viber message copied! Opening Viber…', 'success')
+    }
+    // Clean phone number for Viber deep link
+    const phone = supplier.phone.replace(/[\s\-\(\)]/g, '')
+    window.open(`viber://chat?number=${encodeURIComponent(phone)}`, '_blank')
+  }
+
   const cheapest = quotes.length > 0 ? quotes[0] : null
   const bestValue = quotes.length > 1
     ? quotes.reduce((best, q) => {
@@ -128,6 +168,8 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
 
   const canEdit = profile.role !== 'finance'
   const canManageQuotes = ['admin', 'manager', 'staff'].includes(profile.role)
+  const selectedSupplier = suppliers.find((s) => s.id === selectedSupplierId)
+  const currentDraft = contactTab === 'email' ? emailDraft : viberDraft
 
   return (
     <Modal open={open} onClose={onClose} title={`Booking ${booking.reference_number}`} subtitle={`${booking.guest_name} · ${booking.guest_nationality}`} size="2xl">
@@ -280,31 +322,107 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
           </div>
         )}
 
-        {/* AI Email Draft */}
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <h4 className="text-sm font-semibold text-white flex items-center gap-2">
-              <Mail className="w-4 h-4" /> Supplier Email Draft
-            </h4>
-            <button onClick={generateEmailDraft} disabled={aiLoading} className="btn-secondary text-xs py-1.5 px-3">
+        {/* ── Contact Supplier ── */}
+        <div className="border border-white/10 rounded-2xl overflow-hidden">
+          {/* Header */}
+          <div className="px-4 py-3 bg-white/[0.03] border-b border-white/8 flex items-center justify-between gap-3">
+            <h4 className="text-sm font-semibold text-white">Contact Supplier</h4>
+            <button onClick={generateDrafts} disabled={aiLoading || suppliers.length === 0} className="btn-secondary text-xs py-1.5 px-3 shrink-0">
               {aiLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
               Generate
             </button>
           </div>
-          {emailDraft ? (
-            <div className="bg-black/20 rounded-xl p-3 border border-white/8">
-              <pre className="text-[11px] text-slate-300 whitespace-pre-wrap font-sans">{emailDraft}</pre>
+
+          <div className="p-4 space-y-3">
+            {/* Supplier selector */}
+            {suppliers.length > 0 ? (
+              <div>
+                <label className="text-[11px] text-slate-400 mb-1.5 block font-medium">Select Supplier to Contact</label>
+                <select
+                  value={selectedSupplierId}
+                  onChange={(e) => setSelectedSupplierId(e.target.value)}
+                  className="input-dark text-xs w-full"
+                >
+                  {suppliers.map((s) => (
+                    <option key={s.id} value={s.id}>{s.company_name} — {s.email}</option>
+                  ))}
+                </select>
+                {selectedSupplier && (
+                  <p className="text-[11px] text-slate-500 mt-1.5">📞 {selectedSupplier.phone} · ✉️ {selectedSupplier.email}</p>
+                )}
+              </div>
+            ) : (
+              <p className="text-xs text-slate-500">No suppliers available. Add suppliers first.</p>
+            )}
+
+            {/* Channel tabs */}
+            <div className="flex gap-1 bg-white/5 p-1 rounded-xl">
               <button
-                onClick={() => navigator.clipboard.writeText(emailDraft).then(() => toast('Copied!', 'success'))}
-                className="mt-2 text-xs text-fleet-400 hover:text-fleet-300 transition-colors"
+                onClick={() => setContactTab('email')}
+                className={`flex-1 flex items-center justify-center gap-1.5 text-xs py-1.5 rounded-lg transition-all ${contactTab === 'email' ? 'bg-fleet-600 text-white font-medium' : 'text-slate-400 hover:text-slate-200'}`}
               >
-                Copy to clipboard
+                <Mail className="w-3.5 h-3.5" /> Email
+              </button>
+              <button
+                onClick={() => setContactTab('viber')}
+                className={`flex-1 flex items-center justify-center gap-1.5 text-xs py-1.5 rounded-lg transition-all ${contactTab === 'viber' ? 'bg-[#7360f2] text-white font-medium' : 'text-slate-400 hover:text-slate-200'}`}
+              >
+                <span className="text-sm leading-none">💜</span> Viber
               </button>
             </div>
-          ) : (
-            <p className="text-xs text-slate-500 py-2">Click Generate to draft a supplier inquiry email using AI.</p>
-          )}
+
+            {/* Draft preview */}
+            {currentDraft ? (
+              <div className="bg-black/20 rounded-xl p-3 border border-white/8">
+                <pre className="text-[11px] text-slate-300 whitespace-pre-wrap font-sans leading-relaxed max-h-40 overflow-y-auto">{currentDraft}</pre>
+              </div>
+            ) : (
+              <div className="bg-white/[0.02] rounded-xl p-4 border border-white/5 text-center">
+                <p className="text-xs text-slate-500">
+                  {contactTab === 'email'
+                    ? 'Click Generate to draft a formal email with full booking details.'
+                    : 'Click Generate to draft a short Viber message ready to send.'}
+                </p>
+              </div>
+            )}
+
+            {/* Action buttons */}
+            <div className="flex gap-2">
+              {currentDraft && (
+                <button
+                  onClick={() => navigator.clipboard.writeText(currentDraft).then(() => toast('Copied!', 'success'))}
+                  className="btn-secondary text-xs py-2 px-3 flex items-center gap-1.5"
+                >
+                  <Copy className="w-3.5 h-3.5" /> Copy
+                </button>
+              )}
+              {contactTab === 'email' ? (
+                <button
+                  onClick={sendViaEmail}
+                  disabled={!emailDraft || !selectedSupplier}
+                  className="btn-primary text-xs py-2 px-4 flex items-center gap-1.5 flex-1 justify-center disabled:opacity-40"
+                >
+                  <Send className="w-3.5 h-3.5" /> Send via Email
+                </button>
+              ) : (
+                <button
+                  onClick={openViber}
+                  disabled={!selectedSupplier}
+                  className="flex-1 flex items-center justify-center gap-1.5 text-xs py-2 px-4 rounded-xl font-semibold transition-colors bg-[#7360f2] hover:bg-[#6350e2] text-white disabled:opacity-40"
+                >
+                  <span className="text-sm leading-none">💜</span> Open in Viber
+                </button>
+              )}
+            </div>
+
+            {contactTab === 'viber' && (
+              <p className="text-[11px] text-slate-500 text-center">
+                Message is copied to clipboard automatically. Paste it in the Viber chat that opens.
+              </p>
+            )}
+          </div>
         </div>
+
       </div>
     </Modal>
   )
