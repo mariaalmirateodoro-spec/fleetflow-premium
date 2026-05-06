@@ -175,7 +175,7 @@ Great news! Your transport booking has been confirmed. Here are your final detai
 • Pick-up: ${booking.pickup_location}
 • Drop-off: ${booking.dropoff_location}
 • Date & Time: ${pickupDate} at ${pickupTime}
-${selectedQuote.amount_usd ? `• Total Cost: PHP ${selectedQuote.amount_usd.toLocaleString()}` : ''}
+${selectedQuote.total_amount ? `• Total Cost: PHP ${selectedQuote.total_amount.toLocaleString()}` : ''}
 ${booking.special_requests ? `• Special Requests: ${booking.special_requests}` : ''}
 
 Please be at the pick-up location at least 5 minutes before your scheduled time. Your driver will be waiting for you.

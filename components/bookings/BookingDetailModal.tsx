@@ -39,7 +39,7 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
 
   const [newQuote, setNewQuote] = useState({
     supplier_id: suppliers[0]?.id ?? '',
-    amount_usd: 0,
+    total_amount: 0,
     includes_driver: false,
     vehicle_model: '',
     notes: '',
@@ -61,7 +61,7 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
       .from('quotes')
       .select('*')
       .eq('booking_id', booking.id)
-      .order('amount_usd', { ascending: true })
+      .order('total_amount', { ascending: true })
     if (error) console.error('[loadQuotes]', error)
     if (data) setQuotes(data)
   }
@@ -87,7 +87,7 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
     const { error } = await supabase.from('quotes').insert({
       booking_id: booking.id,
       supplier_id: newQuote.supplier_id,
-      amount_usd: newQuote.amount_usd,
+      total_amount: newQuote.total_amount,
       includes_driver: newQuote.includes_driver,
       vehicle_model: newQuote.vehicle_model || null,
       notes: newQuote.notes || null,
@@ -199,8 +199,8 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
     ? quotes.reduce((best, q) => {
         const bSupplier = suppliers.find((s) => s.id === best.supplier_id)
         const qSupplier = suppliers.find((s) => s.id === q.supplier_id)
-        const bScore = (bSupplier?.rating ?? 0) / 5 * 0.5 + (1 - best.amount_usd / (cheapest?.amount_usd || 1)) * 0.5
-        const qScore = (qSupplier?.rating ?? 0) / 5 * 0.5 + (1 - q.amount_usd / (cheapest?.amount_usd || 1)) * 0.5
+        const bScore = (bSupplier?.rating ?? 0) / 5 * 0.5 + (1 - best.total_amount / (cheapest?.total_amount || 1)) * 0.5
+        const qScore = (qSupplier?.rating ?? 0) / 5 * 0.5 + (1 - q.total_amount / (cheapest?.total_amount || 1)) * 0.5
         return qScore > bScore ? q : best
       })
     : null
@@ -290,7 +290,7 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
                   </div>
                   <div>
                     <label className="text-[11px] text-slate-400 mb-1 block">Amount (PHP) *</label>
-                    <input type="number" min={0} value={newQuote.amount_usd} onChange={(e) => setNewQuote((p) => ({ ...p, amount_usd: +e.target.value }))}
+                    <input type="number" min={0} value={newQuote.total_amount} onChange={(e) => setNewQuote((p) => ({ ...p, total_amount: +e.target.value }))}
                       className="input-dark text-xs" />
                   </div>
                   <div>
@@ -307,7 +307,7 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
                 </div>
                 <div className="flex gap-2 justify-end">
                   <button onClick={() => setShowAddQuote(false)} className="btn-secondary text-xs py-1.5 px-3">Cancel</button>
-                  <button onClick={handleAddQuote} disabled={addingQuote || !newQuote.amount_usd} className="btn-primary text-xs py-1.5 px-3">
+                  <button onClick={handleAddQuote} disabled={addingQuote || !newQuote.total_amount} className="btn-primary text-xs py-1.5 px-3">
                     {addingQuote ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
                     Save Quote
                   </button>
@@ -341,10 +341,10 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
                         </div>
                       </div>
                       <div className="text-right">
-                        <p className="text-sm font-bold text-white">{formatCurrency(q.amount_usd)}</p>
+                        <p className="text-sm font-bold text-white">{formatCurrency(q.total_amount)}</p>
                         {booking.budget_usd && (
-                          <p className={`text-[10px] ${q.amount_usd <= booking.budget_usd ? 'text-emerald-400' : 'text-red-400'}`}>
-                            {q.amount_usd <= booking.budget_usd ? '✓ in budget' : '⚠ over budget'}
+                          <p className={`text-[10px] ${q.total_amount <= booking.budget_usd ? 'text-emerald-400' : 'text-red-400'}`}>
+                            {q.total_amount <= booking.budget_usd ? '✓ in budget' : '⚠ over budget'}
                           </p>
                         )}
                       </div>

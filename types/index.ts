@@ -82,7 +82,7 @@ export interface Quote {
   id: string
   booking_id: string
   supplier_id: string
-  amount_usd: number
+  total_amount: number
   includes_driver: boolean
   vehicle_model: string | null
   estimated_duration_hours: number | null
@@ -152,7 +152,7 @@ export interface CreateSupplierInput {
 export interface CreateQuoteInput {
   booking_id: string
   supplier_id: string
-  amount_usd: number
+  total_amount: number
   includes_driver: boolean
   vehicle_model?: string
   estimated_duration_hours?: number
