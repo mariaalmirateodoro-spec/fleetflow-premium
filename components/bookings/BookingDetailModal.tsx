@@ -233,7 +233,7 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
           <div>
             <div className="flex items-center justify-between mb-2">
               <h4 className="text-sm font-semibold text-white">Supplier Quotes ({quotes.length})</h4>
-              {booking.status !== 'approved' && booking.status !== 'completed' && booking.status !== 'cancelled' && (
+              {booking.status !== 'completed' && booking.status !== 'cancelled' && (
                 <button onClick={() => setShowAddQuote(!showAddQuote)} className="btn-secondary text-xs py-1.5 px-3">
                   <Plus className="w-3.5 h-3.5" /> Add Quote
                 </button>
@@ -309,7 +309,7 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
                           </p>
                         )}
                       </div>
-                      {!q.is_selected && booking.status !== 'approved' && booking.status !== 'completed' && (
+                      {!q.is_selected && booking.status !== 'completed' && (
                         <button onClick={() => handleSelectQuote(q.id)} className="btn-secondary text-xs py-1 px-2.5 shrink-0">
                           Select
                         </button>
