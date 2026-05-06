@@ -143,7 +143,7 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
     const subjectLine = lines[0].replace('Subject: ', '')
     const body = lines.slice(2).join('\n')
     const mailto = `mailto:${supplier.email}?subject=${encodeURIComponent(subjectLine)}&body=${encodeURIComponent(body)}`
-    window.open(mailto, '_blank')
+    const a = document.createElement('a'); a.href = mailto; a.click()
   }
 
   function openViber() {
@@ -182,7 +182,7 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
     const subjectLine = lines[0].replace('Subject: ', '')
     const body = lines.slice(2).join('\n')
     const mailto = `mailto:${booking.guest_email}?subject=${encodeURIComponent(subjectLine)}&body=${encodeURIComponent(body)}`
-    window.open(mailto, '_blank')
+    const a = document.createElement('a'); a.href = mailto; a.click()
   }
 
   const cheapest = quotes.length > 0 ? quotes[0] : null
