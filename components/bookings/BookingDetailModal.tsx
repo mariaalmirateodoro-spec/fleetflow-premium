@@ -142,8 +142,8 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
     const lines = emailDraft.split('\n')
     const subjectLine = lines[0].replace('Subject: ', '')
     const body = lines.slice(2).join('\n')
-    const mailto = `mailto:${supplier.email}?subject=${encodeURIComponent(subjectLine)}&body=${encodeURIComponent(body)}`
-    const a = document.createElement('a'); a.href = mailto; a.click()
+    const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(supplier.email)}&su=${encodeURIComponent(subjectLine)}&body=${encodeURIComponent(body)}`
+    window.open(gmailUrl, '_blank')
   }
 
   function openViber() {
@@ -181,8 +181,8 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
     const lines = guestEmailDraft.split('\n')
     const subjectLine = lines[0].replace('Subject: ', '')
     const body = lines.slice(2).join('\n')
-    const mailto = `mailto:${booking.guest_email}?subject=${encodeURIComponent(subjectLine)}&body=${encodeURIComponent(body)}`
-    const a = document.createElement('a'); a.href = mailto; a.click()
+    const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(booking.guest_email)}&su=${encodeURIComponent(subjectLine)}&body=${encodeURIComponent(body)}`
+    window.open(gmailUrl, '_blank')
   }
 
   const cheapest = quotes.length > 0 ? quotes[0] : null
