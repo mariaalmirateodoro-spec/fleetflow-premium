@@ -29,6 +29,7 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
   // Guest notification state
   const [guestEmailDraft, setGuestEmailDraft] = useState('')
   const [guestEmailLoading, setGuestEmailLoading] = useState(false)
+  const [showNotifyReminder, setShowNotifyReminder] = useState(false)
 
   // Contact supplier state
   const [contactTab, setContactTab] = useState<'email' | 'viber'>('email')
@@ -76,6 +77,7 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
     toast('Quote selected!', 'success')
     await loadQuotes()
     onRefresh()
+    if (booking.guest_email) setShowNotifyReminder(true)
   }
 
   async function handleAddQuote() {
@@ -365,6 +367,24 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
               </span>
             </div>
             <div className="p-4 space-y-3">
+              {/* Notify reminder banner */}
+              {showNotifyReminder && (
+                <div className="flex items-start gap-3 bg-amber-500/10 border border-amber-500/30 rounded-xl px-3 py-2.5">
+                  <span className="text-base leading-none mt-0.5">🔔</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-amber-300">Quote selected — notify the guest!</p>
+                    <p className="text-[11px] text-amber-400/70 mt-0.5">Send them a confirmation email with the final details.</p>
+                  </div>
+                  <button
+                    onClick={() => { setShowNotifyReminder(false); generateGuestEmail() }}
+                    className="shrink-0 text-[11px] font-semibold text-amber-300 bg-amber-500/20 hover:bg-amber-500/30 px-2.5 py-1 rounded-lg transition-colors"
+                  >
+                    Send now →
+                  </button>
+                  <button onClick={() => setShowNotifyReminder(false)} className="shrink-0 text-slate-500 hover:text-slate-300 text-xs leading-none">✕</button>
+                </div>
+              )}
+
               <button
                 onClick={generateGuestEmail}
                 disabled={guestEmailLoading}
