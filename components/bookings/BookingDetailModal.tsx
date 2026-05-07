@@ -158,13 +158,14 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
   function openViber() {
     const supplier = suppliers.find((s) => s.id === selectedSupplierId)
     if (!supplier) return
+    // Auto-copy message so user can Ctrl+V immediately after Viber opens
+    if (viberDraft) {
+      navigator.clipboard.writeText(viberDraft).catch(() => {})
+      toast('Message copied! Open Viber → Ctrl+V to paste', 'success')
+    }
     // Clean phone number for Viber deep link
     const phone = supplier.phone.replace(/[\s\-\(\)]/g, '')
-    // Pass message as text param so it's pre-filled in Viber — user just taps Send
-    const url = viberDraft
-      ? `viber://chat?number=${encodeURIComponent(phone)}&text=${encodeURIComponent(viberDraft)}`
-      : `viber://chat?number=${encodeURIComponent(phone)}`
-    window.open(url, '_blank')
+    window.open(`viber://chat?number=${encodeURIComponent(phone)}`, '_blank')
   }
 
   async function generateGuestEmail() {
@@ -564,7 +565,7 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
 
                 {contactTab === 'viber' && currentDraft && (
                   <p className="text-[11px] text-slate-500 text-center">
-                    Message will be pre-filled in Viber — just tap Send.
+                    Message is copied automatically — just press Ctrl+V in Viber to paste.
                   </p>
                 )}
               </>
