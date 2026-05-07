@@ -1,23 +1,19 @@
-#NoEnv
+#Requires AutoHotkey v2.0
 #SingleInstance Force
-SetWorkingDir %A_ScriptDir%
 
-; Receive the full URL from the custom protocol handler
-url := A_Args[1]
-if (!url) {
+; Get the URL passed by the custom protocol handler
+url := A_Args.Length > 0 ? A_Args[1] : ""
+if (!url)
     ExitApp
-}
 
-; Strip protocol prefix: fleetviber://send?
-StringReplace, params, url, fleetviber://send?,
+; Strip protocol prefix
+params := StrReplace(url, "fleetviber://send?", "")
 
 ; Parse phone and text from query string
 phone   := ""
 message := ""
 
-Loop, Parse, params, &
-{
-    pair  := A_LoopField
+for pair in StrSplit(params, "&") {
     eqPos := InStr(pair, "=")
     if (eqPos > 0) {
         key := SubStr(pair, 1, eqPos - 1)
@@ -33,45 +29,46 @@ Loop, Parse, params, &
 if (!phone || !message)
     ExitApp
 
-; Put message on clipboard
-Clipboard := message
-ClipWait, 2
+; Put the message on the clipboard
+A_Clipboard := message
+ClipWait(2)
 
 ; Open Viber to the supplier's chat
-Run, viber://chat?number=%phone%
+Run "viber://chat?number=" . phone
 
-; Wait for Viber to appear (up to 15 seconds)
-WinWait, ahk_exe Viber.exe, , 15
-if ErrorLevel
+; Wait for Viber window (up to 15 seconds)
+try {
+    WinWait "ahk_exe Viber.exe", , 15
+} catch {
     ExitApp
+}
 
-; Give Viber time to navigate to the chat
-Sleep, 2200
-WinActivate, ahk_exe Viber.exe
-WinWaitActive, ahk_exe Viber.exe, , 5
+; Give Viber time to load the chat
+Sleep 2200
+WinActivate "ahk_exe Viber.exe"
+WinWaitActive "ahk_exe Viber.exe", , 5
 
 ; Click the message input area (bottom-center of Viber window)
-WinGetPos, wx, wy, ww, wh, ahk_exe Viber.exe
-clickX := wx + (ww / 2)
+WinGetPos &wx, &wy, &ww, &wh, "ahk_exe Viber.exe"
+clickX := wx + (ww // 2)
 clickY := wy + wh - 45
-Click, %clickX%, %clickY%
-Sleep, 400
+Click clickX, clickY
+Sleep 400
 
 ; Paste and send
-Send, ^v
-Sleep, 350
-Send, {Enter}
+Send "^v"
+Sleep 350
+Send "{Enter}"
 
 ExitApp
 
-; ── Helper: URL-decode a string ──────────────────────────────
+; ── URL decode helper ─────────────────────────────────────────
 URLDecode(str) {
     str := StrReplace(str, "+", " ")
     Loop {
-        RegExMatch(str, "i)%[0-9a-f]{2}", hex)
-        if !hex
+        if !RegExMatch(str, "i)%[0-9a-f]{2}", &hex)
             break
-        str := StrReplace(str, hex, Chr("0x" . SubStr(hex, 2)))
+        str := StrReplace(str, hex[], Chr("0x" . SubStr(hex[], 2)))
     }
     return str
 }

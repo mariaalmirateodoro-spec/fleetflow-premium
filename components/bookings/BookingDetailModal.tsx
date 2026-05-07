@@ -155,17 +155,32 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
     window.open(gmailUrl, '_blank')
   }
 
-  function openViber() {
+  async function openViber() {
     const supplier = suppliers.find((s) => s.id === selectedSupplierId)
     if (!supplier) return
     const phone = supplier.phone.replace(/[\s\-\(\)]/g, '')
-    // Use anchor click — more reliable than window.open for custom protocols
-    const a = document.createElement('a')
+
     if (viberDraft) {
-      a.href = `fleetviber://send?phone=${encodeURIComponent(phone)}&text=${encodeURIComponent(viberDraft)}`
-    } else {
-      a.href = `viber://chat?number=${encodeURIComponent(phone)}`
+      try {
+        // Call local FleetFlow server — auto-pastes & sends in Viber via AutoHotkey
+        const res = await fetch(
+          `http://localhost:9876/send?phone=${encodeURIComponent(phone)}&text=${encodeURIComponent(viberDraft)}`,
+          { signal: AbortSignal.timeout(3000) }
+        )
+        if (res.ok) {
+          toast('Sending via Viber…', 'success')
+          return
+        }
+      } catch {
+        // Local server not running — fall back to clipboard + deep link
+        navigator.clipboard.writeText(viberDraft).catch(() => {})
+        toast('Message copied — press Ctrl+V in Viber to paste', 'info')
+      }
     }
+
+    // Open Viber chat (fallback path)
+    const a = document.createElement('a')
+    a.href = `viber://chat?number=${encodeURIComponent(phone)}`
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
