@@ -160,12 +160,11 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
     if (!supplier) return
     const phone = supplier.phone.replace(/[\s\-\(\)]/g, '')
     if (viberDraft) {
-      navigator.clipboard.writeText(viberDraft).catch(() => {})
-      toast('Message copied! Opening Viber — press Ctrl+V to paste', 'success')
-      // Small delay so toast renders before the browser "Open Viber?" dialog blocks the page
-      setTimeout(() => {
-        window.open(`viber://chat?number=${encodeURIComponent(phone)}`, '_blank')
-      }, 600)
+      // Use custom protocol so local AutoHotkey script auto-pastes + sends
+      window.open(
+        `fleetviber://send?phone=${encodeURIComponent(phone)}&text=${encodeURIComponent(viberDraft)}`,
+        '_blank'
+      )
     } else {
       window.open(`viber://chat?number=${encodeURIComponent(phone)}`, '_blank')
     }
@@ -568,7 +567,7 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
 
                 {contactTab === 'viber' && currentDraft && (
                   <p className="text-[11px] text-slate-500 text-center">
-                    Message is copied automatically — just press Ctrl+V in Viber to paste.
+                    Click Send via Viber — message will be sent automatically.
                   </p>
                 )}
               </>

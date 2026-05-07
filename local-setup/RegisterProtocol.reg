@@ -1,0 +1,12 @@
+Windows Registry Editor Version 5.00
+
+[HKEY_CLASSES_ROOT\fleetviber]
+@="FleetFlow Viber Sender"
+"URL Protocol"=""
+
+[HKEY_CLASSES_ROOT\fleetviber\shell]
+
+[HKEY_CLASSES_ROOT\fleetviber\shell\open]
+
+[HKEY_CLASSES_ROOT\fleetviber\shell\open\command]
+@="\"C:\\Program Files\\AutoHotkey\\AutoHotkey.exe\" \"C:\\FleetFlow\\FleetViberSend.ahk\" \"%1\""
