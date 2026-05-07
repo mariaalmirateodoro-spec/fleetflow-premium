@@ -53,7 +53,7 @@ export function LocationInput({ value, onChange, placeholder, required, inputCla
       setLoading(true)
       try {
         const res = await fetch(
-          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(value)}&format=json&limit=6&addressdetails=0`,
+          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(value)}&format=json&limit=6&addressdetails=0&countrycodes=ph`,
           { headers: { 'Accept-Language': 'en' } }
         )
         const data: Suggestion[] = await res.json()
