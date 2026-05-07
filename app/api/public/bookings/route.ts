@@ -5,12 +5,17 @@ import { createServerClient } from '@supabase/ssr'
 // inserts where created_by IS NULL (guest bookings).
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createServerClient(
+    const anonClient = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: { getAll: () => [], setAll: () => {} },
-      }
+      { cookies: { getAll: () => [], setAll: () => {} } }
+    )
+
+    // Service-role client for sending notifications (bypasses RLS)
+    const adminClient = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      { cookies: { getAll: () => [], setAll: () => {} } }
     )
 
     const body = await request.json()
@@ -23,7 +28,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await anonClient
       .from('bookings')
       .insert({
         guest_name: body.guest_name,
@@ -41,10 +46,28 @@ export async function POST(request: NextRequest) {
         status: 'pending',
         created_by: null, // guest booking — no auth user
       })
-      .select('reference_number')
+      .select('id, reference_number')
       .single()
 
     if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+
+    // Notify all admin/manager/staff users about the new guest booking
+    const { data: staff } = await adminClient
+      .from('profiles')
+      .select('id')
+      .in('role', ['admin', 'manager', 'staff'])
+
+    if (staff && staff.length > 0) {
+      await adminClient.from('notifications').insert(
+        staff.map((user) => ({
+          user_id: user.id,
+          type: 'new_booking',
+          title: '🚗 New Guest Booking',
+          message: `${body.guest_name} (${body.guest_nationality}) submitted a booking request — ${body.pickup_location} → ${body.dropoff_location}. Ref: ${data.reference_number}`,
+          booking_id: data.id,
+        }))
+      )
+    }
 
     return NextResponse.json({ reference_number: data.reference_number }, { status: 201 })
   } catch {

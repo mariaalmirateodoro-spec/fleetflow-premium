@@ -6,7 +6,7 @@ export type UserRole = 'admin' | 'staff' | 'manager' | 'finance'
 export type BookingStatus = 'pending' | 'quoted' | 'approved' | 'completed' | 'cancelled'
 export type VehicleType = 'sedan' | 'suv' | 'van' | 'minibus' | 'luxury' | 'pickup'
 export type ApprovalAction = 'approved' | 'rejected' | 'revision_requested'
-export type NotificationType = 'new_request' | 'approval_needed' | 'approved' | 'payment_due' | 'system'
+export type NotificationType = 'new_request' | 'approval_needed' | 'approved' | 'payment_due' | 'system' | 'new_booking'
 
 // ─────────────────────────────────────────────────────────────
 // Database row types
