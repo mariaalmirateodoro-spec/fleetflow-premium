@@ -158,14 +158,17 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
   function openViber() {
     const supplier = suppliers.find((s) => s.id === selectedSupplierId)
     if (!supplier) return
-    // Auto-copy message so user can Ctrl+V immediately after Viber opens
+    const phone = supplier.phone.replace(/[\s\-\(\)]/g, '')
     if (viberDraft) {
       navigator.clipboard.writeText(viberDraft).catch(() => {})
-      toast('Message copied! Open Viber → Ctrl+V to paste', 'success')
+      toast('Message copied! Opening Viber — press Ctrl+V to paste', 'success')
+      // Small delay so toast renders before the browser "Open Viber?" dialog blocks the page
+      setTimeout(() => {
+        window.open(`viber://chat?number=${encodeURIComponent(phone)}`, '_blank')
+      }, 600)
+    } else {
+      window.open(`viber://chat?number=${encodeURIComponent(phone)}`, '_blank')
     }
-    // Clean phone number for Viber deep link
-    const phone = supplier.phone.replace(/[\s\-\(\)]/g, '')
-    window.open(`viber://chat?number=${encodeURIComponent(phone)}`, '_blank')
   }
 
   async function generateGuestEmail() {
