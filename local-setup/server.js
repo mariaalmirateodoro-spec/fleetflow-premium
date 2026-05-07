@@ -3,11 +3,10 @@ const { exec } = require('child_process')
 const url  = require('url')
 const fs   = require('fs')
 
-const PORT   = 9876
-const ORIGIN = 'https://fleetflow-premium.vercel.app'
+const PORT = 9876
 
 const server = http.createServer((req, res) => {
-  res.setHeader('Access-Control-Allow-Origin', ORIGIN)
+  res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
 
@@ -34,7 +33,7 @@ const server = http.createServer((req, res) => {
     fs.writeFileSync('C:\\FleetFlow\\pending_message.txt', text,  'utf8')
 
     // Trigger AutoHotkey script
-    exec('"C:\\Program Files\\AutoHotkey\\AutoHotkey.exe" "C:\\FleetFlow\\FleetViberSendFile.ahk"',
+    exec('"C:\\Program Files\\AutoHotkey\\v2\\AutoHotkey.exe" "C:\\FleetFlow\\FleetViberSendFile.ahk"',
       (err) => { if (err) console.error('AHK error:', err.message) }
     )
 

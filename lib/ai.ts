@@ -129,12 +129,46 @@ Email: operations@fleetflow.com
 
 // ─── Viber message draft ─────────────────────────────────────
 export function generateViberMessage(booking: Booking, supplier: Supplier): string {
-  const pickupDate = new Date(booking.pickup_datetime).toLocaleDateString('en-PH', {
+  const fmt = (dt: string) => new Date(dt).toLocaleDateString('en-PH', {
     weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
   })
-  const pickupTime = new Date(booking.pickup_datetime).toLocaleTimeString('en-PH', {
+  const fmtTime = (dt: string) => new Date(dt).toLocaleTimeString('en-PH', {
     hour: '2-digit', minute: '2-digit',
   })
+
+  const vehicleLabel = booking.vehicle_type.charAt(0).toUpperCase() + booking.vehicle_type.slice(1)
+    + (booking.driver_required ? ' with driver' : '')
+
+  // Determine trip type
+  const hasDropoff = !!booking.dropoff_datetime
+  const durationMs = hasDropoff
+    ? new Date(booking.dropoff_datetime!).getTime() - new Date(booking.pickup_datetime).getTime()
+    : 0
+  const durationDays = Math.ceil(durationMs / (1000 * 60 * 60 * 24))
+  const isMultiDay = durationDays >= 1
+
+  let tripDetails: string
+  if (isMultiDay && hasDropoff) {
+    // Full-day or multi-day rental
+    tripDetails =
+      `📍 Location: ${booking.pickup_location}
+📅 Departure: ${fmt(booking.pickup_datetime)} at ${fmtTime(booking.pickup_datetime)}
+📅 Return: ${fmt(booking.dropoff_datetime!)} at ${fmtTime(booking.dropoff_datetime!)}
+🕐 Duration: ${durationDays} day${durationDays > 1 ? 's' : ''}`
+  } else if (hasDropoff) {
+    // Same-day transfer with a dropoff time
+    tripDetails =
+      `📍 From: ${booking.pickup_location}
+📍 To: ${booking.dropoff_location}
+📅 Date: ${fmt(booking.pickup_datetime)}
+🕐 Pick-up: ${fmtTime(booking.pickup_datetime)} → Drop-off: ${fmtTime(booking.dropoff_datetime!)}`
+  } else {
+    // One-way transfer, no return time specified
+    tripDetails =
+      `📍 From: ${booking.pickup_location}
+📍 To: ${booking.dropoff_location}
+📅 Date: ${fmt(booking.pickup_datetime)} at ${fmtTime(booking.pickup_datetime)}`
+  }
 
   return `Hi ${supplier.contact_person}! 👋
 
@@ -142,10 +176,8 @@ We have a transport booking and would like your quote:
 
 📋 Ref: ${booking.reference_number}
 👤 Guest: ${booking.guest_name} (${booking.guest_nationality}) — ${booking.guest_count} pax
-🚗 Vehicle: ${booking.vehicle_type.charAt(0).toUpperCase() + booking.vehicle_type.slice(1)}${booking.driver_required ? ' with driver' : ''}
-📍 From: ${booking.pickup_location}
-📍 To: ${booking.dropoff_location}
-📅 Date: ${pickupDate} at ${pickupTime}${booking.budget_usd ? `\n💰 Budget: PHP ${booking.budget_usd}` : ''}${booking.notes ? `\n📝 Notes: ${booking.notes}` : ''}
+🚗 Vehicle: ${vehicleLabel}
+${tripDetails}${booking.budget_usd ? `\n💰 Budget: PHP ${booking.budget_usd}` : ''}${booking.notes ? `\n📝 Notes: ${booking.notes}` : ''}
 
 Please reply with your best rate ASAP. Thank you! 🙏
 — FleetFlow Team`
@@ -202,24 +234,4 @@ Thank you for choosing FleetFlow Premium. Your transport booking has been receiv
 • Date & Time: ${pickupDate} at ${pickupTime}
 ${booking.special_requests ? `• Special Requests: ${booking.special_requests}` : ''}
 
-We are currently confirming vehicle availability and will send you a confirmation with final details shortly.
-
-For any questions, please do not hesitate to contact us.
-
-Warm regards,
-FleetFlow Premium – Guest Transport Operations
-Email: operations@fleetflow.com`
-}
-
-// ─── Booking summary ─────────────────────────────────────────
-export async function summarizeBooking(booking: Booking): Promise<string> {
-  if (OPENAI_AVAILABLE) {
-    // Real OpenAI call would go here
-  }
-
-  const date = new Date(booking.pickup_datetime)
-  const daysUntil = Math.ceil((date.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
-  const timeframe = daysUntil > 0 ? `in ${daysUntil} day${daysUntil > 1 ? 's' : ''}` : 'in the past'
-
-  return `Booking ${booking.reference_number}: ${booking.guest_name} (${booking.guest_nationality}) — ${booking.guest_count} guest${booking.guest_count > 1 ? 's' : ''} — requires a ${booking.vehicle_type}${booking.driver_required ? ' with driver' : ''} from ${booking.pickup_location} to ${booking.dropoff_location}, ${timeframe}. Status: ${booking.status.toUpperCase()}${booking.budget_usd ? `. Budget: PHP ${booking.budget_usd}` : ''}.${booking.notes ? ` Notes: ${booking.notes}` : ''}`
-}
+We are currently confirming vehicle availability and will send you a confirmation wit
