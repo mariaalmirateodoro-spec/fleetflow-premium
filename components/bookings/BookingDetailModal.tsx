@@ -159,15 +159,16 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
     const supplier = suppliers.find((s) => s.id === selectedSupplierId)
     if (!supplier) return
     const phone = supplier.phone.replace(/[\s\-\(\)]/g, '')
+    // Use anchor click — more reliable than window.open for custom protocols
+    const a = document.createElement('a')
     if (viberDraft) {
-      // Use custom protocol so local AutoHotkey script auto-pastes + sends
-      window.open(
-        `fleetviber://send?phone=${encodeURIComponent(phone)}&text=${encodeURIComponent(viberDraft)}`,
-        '_blank'
-      )
+      a.href = `fleetviber://send?phone=${encodeURIComponent(phone)}&text=${encodeURIComponent(viberDraft)}`
     } else {
-      window.open(`viber://chat?number=${encodeURIComponent(phone)}`, '_blank')
+      a.href = `viber://chat?number=${encodeURIComponent(phone)}`
     }
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
   }
 
   async function generateGuestEmail() {
