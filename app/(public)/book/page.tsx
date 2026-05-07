@@ -3,6 +3,7 @@
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
+import { LocationInput } from '@/components/ui/LocationInput'
 
 type VehicleType = 'sedan' | 'suv' | 'van' | 'minibus' | 'luxury' | 'pickup'
 
@@ -146,23 +147,23 @@ function BookingForm() {
 
           <div>
             <label className={labelCls}>Pickup location *</label>
-            <input
+            <LocationInput
               required
-              className={inputCls}
+              inputClassName={inputCls}
               placeholder="e.g. NAIA Terminal 3, Manila"
               value={form.pickup_location}
-              onChange={(e) => set('pickup_location', e.target.value)}
+              onChange={(v) => set('pickup_location', v)}
             />
           </div>
 
           <div>
             <label className={labelCls}>Drop-off location *</label>
-            <input
+            <LocationInput
               required
-              className={inputCls}
+              inputClassName={inputCls}
               placeholder="e.g. Makati CBD, BGC office"
               value={form.dropoff_location}
-              onChange={(e) => set('dropoff_location', e.target.value)}
+              onChange={(v) => set('dropoff_location', v)}
             />
           </div>
 

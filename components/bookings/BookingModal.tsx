@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Loader2, Sparkles } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
+import { LocationInput } from '@/components/ui/LocationInput'
 import { createClient } from '@/lib/supabase/client'
 import { vehicleLabels } from '@/lib/utils'
 import type { Booking, CreateBookingInput, Profile, Supplier, VehicleType } from '@/types'
@@ -150,13 +151,23 @@ export function BookingModal({ open, onClose, booking, suppliers, profile, onSuc
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-xs text-slate-400 mb-1.5 font-medium">Pickup Location *</label>
-            <input value={form.pickup_location} onChange={(e) => update('pickup_location', e.target.value)}
-              placeholder="e.g. JFK International Airport" required className="input-dark" />
+            <LocationInput
+              value={form.pickup_location}
+              onChange={(v) => update('pickup_location', v)}
+              placeholder="e.g. JFK International Airport"
+              required
+              inputClassName="input-dark"
+            />
           </div>
           <div>
             <label className="block text-xs text-slate-400 mb-1.5 font-medium">Dropoff Location *</label>
-            <input value={form.dropoff_location} onChange={(e) => update('dropoff_location', e.target.value)}
-              placeholder="e.g. Midtown Hotel" required className="input-dark" />
+            <LocationInput
+              value={form.dropoff_location}
+              onChange={(v) => update('dropoff_location', v)}
+              placeholder="e.g. Midtown Hotel"
+              required
+              inputClassName="input-dark"
+            />
           </div>
         </div>
 
