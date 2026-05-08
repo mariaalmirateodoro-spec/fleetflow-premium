@@ -38,6 +38,7 @@ function BookingForm() {
     guest_count: '1',
     guest_phone: '',
     guest_email: '',
+    guest_line_id: '',
     pickup_location: '',
     dropoff_location: '',
     pickup_date: '',
@@ -74,6 +75,7 @@ function BookingForm() {
           guest_count: parseInt(form.guest_count),
           guest_phone: form.guest_phone,
           guest_email: form.guest_email,
+          guest_line_id: form.guest_line_id || null,
           pickup_location: form.pickup_location,
           dropoff_location: form.dropoff_location,
           pickup_datetime,
@@ -295,6 +297,21 @@ function BookingForm() {
               value={form.guest_email}
               onChange={(e) => set('guest_email', e.target.value)}
             />
+          </div>
+
+          <div>
+            <label className={labelCls} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ color: '#06C755' }}>LINE</span> ID or phone
+              <span className="text-slate-500 font-normal">(optional)</span>
+            </label>
+            <input
+              type="text"
+              className={inputCls}
+              placeholder="LINE username or +63 9XX XXX XXXX"
+              value={form.guest_line_id}
+              onChange={(e) => set('guest_line_id', e.target.value)}
+            />
+            <p className="text-xs text-slate-500 mt-1.5">We'll send booking updates via LINE if provided.</p>
           </div>
         </div>
 

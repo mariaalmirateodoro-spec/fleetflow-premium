@@ -36,6 +36,7 @@ export async function POST(request: NextRequest) {
         guest_count: Number(body.guest_count),
         guest_phone: body.guest_phone,
         guest_email: body.guest_email,
+        guest_line_id: body.guest_line_id ?? null,
         pickup_location: body.pickup_location,
         dropoff_location: body.dropoff_location,
         pickup_datetime: body.pickup_datetime,
