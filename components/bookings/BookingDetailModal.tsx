@@ -30,6 +30,10 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
   const [guestEmailDraft, setGuestEmailDraft] = useState('')
   const [guestEmailLoading, setGuestEmailLoading] = useState(false)
   const [showNotifyReminder, setShowNotifyReminder] = useState(false)
+  const [guestViberDraft, setGuestViberDraft] = useState('')
+  const [guestViberLoading, setGuestViberLoading] = useState(false)
+  const [guestLineDraft, setGuestLineDraft] = useState('')
+  const [guestLineLoading, setGuestLineLoading] = useState(false)
 
   // Contact supplier state
   const [contactTab, setContactTab] = useState<'email' | 'viber'>('email')
@@ -203,6 +207,88 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
     setGuestEmailLoading(false)
   }
 
+  async function generateGuestViberDraft() {
+    setGuestViberLoading(true)
+    const selectedQuote = quotes.find((q) => q.is_selected) ?? null
+    try {
+      const res = await fetch('/api/ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'guest_viber_message', booking, selectedQuote }),
+      })
+      const data = await res.json()
+      setGuestViberDraft(data.message ?? '')
+    } catch {
+      setGuestViberDraft('Failed to generate. Please try again.')
+    }
+    setGuestViberLoading(false)
+  }
+
+  async function openGuestViber() {
+    if (!booking.guest_phone) return
+    const phone = booking.guest_phone.replace(/[\s\-\(\)]/g, '')
+    if (guestViberDraft) {
+      try {
+        const res = await fetch(
+          `http://localhost:9876/send?phone=${encodeURIComponent(phone)}&text=${encodeURIComponent(guestViberDraft)}`,
+          { signal: AbortSignal.timeout(3000) }
+        )
+        if (res.ok) {
+          toast('Sending via Viber…', 'success')
+          return
+        }
+      } catch {
+        navigator.clipboard.writeText(guestViberDraft).catch(() => {})
+        toast('Message copied — press Ctrl+V in Viber to paste', 'info')
+      }
+    }
+    const a = document.createElement('a')
+    a.href = `viber://chat?number=${encodeURIComponent(phone)}`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+  }
+
+
+  async function generateGuestLineDraft() {
+    setGuestLineLoading(true)
+    const selectedQuote = quotes.find((q) => q.is_selected) ?? null
+    try {
+      const res = await fetch('/api/ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'guest_line_message', booking, selectedQuote }),
+      })
+      const data = await res.json()
+      setGuestLineDraft(data.message ?? '')
+    } catch {
+      setGuestLineDraft('Failed to generate. Please try again.')
+    }
+    setGuestLineLoading(false)
+  }
+
+  function openGuestLine() {
+    const lineContact = booking.guest_line_id || booking.guest_phone
+    if (!lineContact) return
+    if (guestLineDraft) {
+      navigator.clipboard.writeText(guestLineDraft).catch(() => {})
+      toast('Message copied — open LINE and paste to send', 'info')
+    }
+    // If it looks like a phone number, normalize it; otherwise treat as LINE username
+    const cleaned = lineContact.replace(/[\s\-\(\)]/g, '')
+    const isPhone = /^[+\d]/.test(cleaned)
+    let lineIdentifier: string
+    if (isPhone) {
+      lineIdentifier = cleaned.startsWith('+') ? cleaned : `+63${cleaned.replace(/^0/, '')}`
+    } else {
+      lineIdentifier = lineContact.trim()
+    }
+    const a = document.createElement('a')
+    a.href = `line://ti/p/~${encodeURIComponent(lineIdentifier)}`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+  }
   function sendGuestEmail() {
     if (!booking.guest_email || !guestEmailDraft) return
     const lines = guestEmailDraft.split('\n')
@@ -380,16 +466,24 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
         )}
 
         {/* ── Notify Guest ── */}
-        {booking.guest_email && booking.status !== 'cancelled' && (
+        {(booking.guest_email || booking.guest_phone || booking.guest_line_id) && booking.status !== 'cancelled' && (
           <div className="border border-white/10 rounded-2xl overflow-hidden">
             <div className="px-4 py-3 bg-white/[0.03] border-b border-white/8 flex items-center justify-between">
               <div>
                 <h4 className="text-sm font-semibold text-white">Notify Guest</h4>
-                <p className="text-[11px] text-slate-500 mt-0.5">Send a booking update to the guest's email</p>
+                <p className="text-[11px] text-slate-500 mt-0.5">Send a booking update via email, Viber, or LINE</p>
               </div>
-              <span className="text-[11px] text-slate-400 bg-white/[0.04] px-2 py-1 rounded-lg truncate max-w-[180px]">
-                ✉️ {booking.guest_email}
-              </span>
+              <div className="flex gap-1.5 shrink-0">
+                {booking.guest_email && (
+                  <span className="text-[11px] text-slate-400 bg-white/[0.04] px-2 py-1 rounded-lg truncate max-w-[140px]">✉️ {booking.guest_email}</span>
+                )}
+                {booking.guest_phone && (
+                  <span className="text-[11px] text-slate-400 bg-white/[0.04] px-2 py-1 rounded-lg shrink-0">💜🟢 {booking.guest_phone}</span>
+                )}
+                {booking.guest_line_id && (
+                  <span className="text-[11px] text-[#06C755] bg-[#06C755]/10 border border-[#06C755]/20 px-2 py-1 rounded-lg shrink-0">🟢 LINE: {booking.guest_line_id}</span>
+                )}
+              </div>
             </div>
             <div className="p-4 space-y-3">
               {/* Notify reminder banner */}
@@ -398,7 +492,7 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
                   <span className="text-base leading-none mt-0.5">🔔</span>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-semibold text-amber-300">Quote selected — notify the guest!</p>
-                    <p className="text-[11px] text-amber-400/70 mt-0.5">Send them a confirmation email with the final details.</p>
+                    <p className="text-[11px] text-amber-400/70 mt-0.5">Send them a confirmation with the final details.</p>
                   </div>
                   <button
                     onClick={() => { setShowNotifyReminder(false); generateGuestEmail() }}
@@ -410,41 +504,134 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
                 </div>
               )}
 
-              <button
-                onClick={generateGuestEmail}
-                disabled={guestEmailLoading}
-                className="w-full btn-secondary text-xs py-2 flex items-center justify-center gap-2 disabled:opacity-40"
-              >
-                {guestEmailLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-                {guestEmailLoading ? 'Generating…' : quotes.some(q => q.is_selected) ? 'Generate Confirmation Email' : 'Generate Booking Update Email'}
-              </button>
-
-              {guestEmailDraft ? (
+              {/* Email section */}
+              {booking.guest_email && (
                 <>
-                  <div className="bg-black/20 rounded-xl p-3 border border-white/8">
-                    <pre className="text-[11px] text-slate-300 whitespace-pre-wrap font-sans leading-relaxed max-h-40 overflow-y-auto">{guestEmailDraft}</pre>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => navigator.clipboard.writeText(guestEmailDraft).then(() => toast('Copied!', 'success'))}
-                      className="btn-secondary text-xs py-2 px-3 flex items-center gap-1.5 shrink-0"
-                    >
-                      <Copy className="w-3.5 h-3.5" /> Copy
-                    </button>
-                    <button
-                      onClick={sendGuestEmail}
-                      className="btn-primary text-xs py-2 px-4 flex items-center gap-1.5 flex-1 justify-center"
-                    >
-                      <Send className="w-3.5 h-3.5" /> Send to Guest
-                    </button>
-                  </div>
+                  <button
+                    onClick={generateGuestEmail}
+                    disabled={guestEmailLoading}
+                    className="w-full btn-secondary text-xs py-2 flex items-center justify-center gap-2 disabled:opacity-40"
+                  >
+                    {guestEmailLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                    {guestEmailLoading ? 'Generating…' : quotes.some(q => q.is_selected) ? 'Generate Confirmation Email' : 'Generate Booking Update Email'}
+                  </button>
+
+                  {guestEmailDraft ? (
+                    <>
+                      <div className="bg-black/20 rounded-xl p-3 border border-white/8">
+                        <pre className="text-[11px] text-slate-300 whitespace-pre-wrap font-sans leading-relaxed max-h-40 overflow-y-auto">{guestEmailDraft}</pre>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => navigator.clipboard.writeText(guestEmailDraft).then(() => toast('Copied!', 'success'))}
+                          className="btn-secondary text-xs py-2 px-3 flex items-center gap-1.5 shrink-0"
+                        >
+                          <Copy className="w-3.5 h-3.5" /> Copy
+                        </button>
+                        <button
+                          onClick={sendGuestEmail}
+                          className="btn-primary text-xs py-2 px-4 flex items-center gap-1.5 flex-1 justify-center"
+                        >
+                          <Send className="w-3.5 h-3.5" /> Send to Guest
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <p className="text-[11px] text-slate-500 text-center">
+                      {quotes.some(q => q.is_selected)
+                        ? 'Generates a confirmation email with vehicle and cost details.'
+                        : 'Generates an update email letting the guest know their booking is being processed.'}
+                    </p>
+                  )}
                 </>
-              ) : (
-                <p className="text-[11px] text-slate-500 text-center">
-                  {quotes.some(q => q.is_selected)
-                    ? 'Generates a confirmation email with vehicle and cost details.'
-                    : 'Generates an update email letting the guest know their booking is being processed.'}
-                </p>
+              )}
+
+              {/* Viber section */}
+              {booking.guest_phone && (
+                <>
+                  {booking.guest_email && <div className="border-t border-white/8 pt-3" />}
+                  <button
+                    onClick={generateGuestViberDraft}
+                    disabled={guestViberLoading}
+                    className="w-full text-xs py-2 flex items-center justify-center gap-2 disabled:opacity-40 rounded-xl border border-[#7360f2]/40 bg-[#7360f2]/10 text-[#a99af8] hover:bg-[#7360f2]/20 transition-colors"
+                  >
+                    {guestViberLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <span className="text-sm leading-none">💜</span>}
+                    {guestViberLoading ? 'Generating…' : quotes.some(q => q.is_selected) ? 'Generate Viber Confirmation' : 'Generate Viber Update'}
+                  </button>
+
+                  {guestViberDraft ? (
+                    <>
+                      <div className="bg-black/20 rounded-xl p-3 border border-[#7360f2]/20">
+                        <pre className="text-[11px] text-slate-300 whitespace-pre-wrap font-sans leading-relaxed max-h-40 overflow-y-auto">{guestViberDraft}</pre>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => navigator.clipboard.writeText(guestViberDraft).then(() => toast('Copied!', 'success'))}
+                          className="btn-secondary text-xs py-2 px-3 flex items-center gap-1.5 shrink-0"
+                        >
+                          <Copy className="w-3.5 h-3.5" /> Copy
+                        </button>
+                        <button
+                          onClick={openGuestViber}
+                          className="flex-1 flex items-center justify-center gap-1.5 text-xs py-2 px-4 rounded-xl font-semibold transition-colors bg-[#7360f2] hover:bg-[#6350e2] text-white"
+                        >
+                          <span className="text-sm leading-none">💜</span> Send via Viber
+                        </button>
+                      </div>
+                      <p className="text-[11px] text-slate-500 text-center">
+                        Sends automatically if the FleetFlow local server is running.
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-[11px] text-slate-500 text-center">
+                      Generates a friendly Viber message to notify the guest directly.
+                    </p>
+                  )}
+                </>
+              )}
+
+              {/* ── LINE ── */}
+              {(booking.guest_line_id || booking.guest_phone) && (
+                <>
+                  <div className="border-t border-white/8 pt-3" />
+                  <button
+                    onClick={generateGuestLineDraft}
+                    disabled={guestLineLoading}
+                    className="w-full text-xs py-2 flex items-center justify-center gap-2 disabled:opacity-40 rounded-xl border border-[#06C755]/40 bg-[#06C755]/10 text-[#06C755] hover:bg-[#06C755]/20 transition-colors"
+                  >
+                    {guestLineLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <span className="text-sm leading-none">🟢</span>}
+                    {guestLineLoading ? 'Generating…' : quotes.some(q => q.is_selected) ? 'Generate LINE Confirmation' : 'Generate LINE Update'}
+                  </button>
+
+                  {guestLineDraft ? (
+                    <>
+                      <div className="bg-black/20 rounded-xl p-3 border border-[#06C755]/20">
+                        <pre className="text-[11px] text-slate-300 whitespace-pre-wrap font-sans leading-relaxed max-h-40 overflow-y-auto">{guestLineDraft}</pre>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => navigator.clipboard.writeText(guestLineDraft).then(() => toast('Copied!', 'success'))}
+                          className="btn-secondary text-xs py-2 px-3 flex items-center gap-1.5 shrink-0"
+                        >
+                          <Copy className="w-3.5 h-3.5" /> Copy
+                        </button>
+                        <button
+                          onClick={openGuestLine}
+                          className="flex-1 flex items-center justify-center gap-1.5 text-xs py-2 px-4 rounded-xl font-semibold transition-colors bg-[#06C755] hover:bg-[#05b34a] text-white"
+                        >
+                          <span className="text-sm leading-none">🟢</span> Send via LINE
+                        </button>
+                      </div>
+                      <p className="text-[11px] text-slate-500 text-center">
+                        Message is copied to clipboard — paste it in LINE to send.
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-[11px] text-slate-500 text-center">
+                      Generates a friendly LINE message to notify the guest directly.
+                    </p>
+                  )}
+                </>
               )}
             </div>
           </div>

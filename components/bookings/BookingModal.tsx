@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Loader2, Sparkles } from 'lucide-react'
+import { Loader2, Sparkles, Phone, Mail, MessageCircle } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { LocationInput } from '@/components/ui/LocationInput'
 import { createClient } from '@/lib/supabase/client'
@@ -29,6 +29,9 @@ export function BookingModal({ open, onClose, booking, suppliers, profile, onSuc
     guest_name: '',
     guest_nationality: 'Japanese',
     guest_count: 1,
+    guest_phone: '',
+    guest_email: '',
+    guest_line_id: '',
     pickup_datetime: '',
     dropoff_datetime: '',
     pickup_location: '',
@@ -46,6 +49,9 @@ export function BookingModal({ open, onClose, booking, suppliers, profile, onSuc
         guest_name: booking.guest_name,
         guest_nationality: booking.guest_nationality,
         guest_count: booking.guest_count,
+        guest_phone: booking.guest_phone ?? '',
+        guest_email: booking.guest_email ?? '',
+        guest_line_id: booking.guest_line_id ?? '',
         pickup_datetime: booking.pickup_datetime?.slice(0, 16) ?? '',
         dropoff_datetime: booking.dropoff_datetime?.slice(0, 16) ?? '',
         pickup_location: booking.pickup_location,
@@ -91,6 +97,9 @@ export function BookingModal({ open, onClose, booking, suppliers, profile, onSuc
       guest_name: form.guest_name,
       guest_nationality: form.guest_nationality,
       guest_count: form.guest_count,
+      guest_phone: form.guest_phone || null,
+      guest_email: form.guest_email || null,
+      guest_line_id: form.guest_line_id || null,
       pickup_datetime: new Date(form.pickup_datetime).toISOString(),
       dropoff_datetime: form.dropoff_datetime ? new Date(form.dropoff_datetime).toISOString() : null,
       pickup_location: form.pickup_location,
@@ -130,6 +139,49 @@ export function BookingModal({ open, onClose, booking, suppliers, profile, onSuc
             <select value={form.guest_nationality} onChange={(e) => update('guest_nationality', e.target.value)} className="input-dark">
               {NATIONALITIES.map((n) => <option key={n}>{n}</option>)}
             </select>
+          </div>
+        </div>
+
+        {/* Contact info */}
+        <div className="rounded-xl border border-white/8 bg-white/[0.02] p-3 space-y-3">
+          <p className="text-[11px] font-medium text-slate-400 uppercase tracking-wide">Guest Contact</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="flex items-center gap-1.5 text-xs text-slate-400 mb-1.5 font-medium">
+                <Phone className="w-3 h-3" /> Phone
+              </label>
+              <input
+                value={form.guest_phone ?? ''}
+                onChange={(e) => update('guest_phone', e.target.value)}
+                placeholder="+63 9XX XXX XXXX"
+                className="input-dark"
+              />
+            </div>
+            <div>
+              <label className="flex items-center gap-1.5 text-xs text-slate-400 mb-1.5 font-medium">
+                <Mail className="w-3 h-3" /> Email
+              </label>
+              <input
+                type="email"
+                value={form.guest_email ?? ''}
+                onChange={(e) => update('guest_email', e.target.value)}
+                placeholder="guest@email.com"
+                className="input-dark"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="flex items-center gap-1.5 text-xs text-slate-400 mb-1.5 font-medium">
+              <MessageCircle className="w-3 h-3 text-[#06C755]" />
+              <span className="text-[#06C755]">LINE</span> ID or Phone
+            </label>
+            <input
+              value={form.guest_line_id ?? ''}
+              onChange={(e) => update('guest_line_id', e.target.value)}
+              placeholder="LINE username or +63 9XX XXX XXXX"
+              className="input-dark"
+            />
+            <p className="text-[10px] text-slate-500 mt-1">Used to send booking updates via LINE</p>
           </div>
         </div>
 

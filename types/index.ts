@@ -53,6 +53,7 @@ export interface Booking {
   guest_count: number
   guest_phone: string | null
   guest_email: string | null
+  guest_line_id: string | null
   pickup_datetime: string
   dropoff_datetime: string | null
   pickup_location: string
@@ -127,6 +128,9 @@ export interface CreateBookingInput {
   guest_name: string
   guest_nationality: string
   guest_count: number
+  guest_phone?: string
+  guest_email?: string
+  guest_line_id?: string
   pickup_datetime: string
   dropoff_datetime?: string
   pickup_location: string
