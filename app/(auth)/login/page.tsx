@@ -30,13 +30,6 @@ export default function LoginPage() {
     }
   }
 
-  // Quick-fill demo credentials
-  const demoAccounts = [
-    { label: 'Admin', email: 'admin@fleetflow.demo', color: 'text-red-400' },
-    { label: 'Manager', email: 'manager@fleetflow.demo', color: 'text-purple-400' },
-    { label: 'Staff', email: 'staff@fleetflow.demo', color: 'text-blue-400' },
-    { label: 'Finance', email: 'finance@fleetflow.demo', color: 'text-emerald-400' },
-  ]
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#090e1a] relative overflow-hidden">
@@ -122,24 +115,6 @@ export default function LoginPage() {
             </button>
           </form>
 
-          {/* Demo accounts */}
-          <div className="mt-6 pt-5 border-t border-white/8">
-            <p className="text-[11px] text-slate-500 text-center mb-3 uppercase tracking-wider font-medium">Demo Accounts</p>
-            <div className="grid grid-cols-2 gap-2">
-              {demoAccounts.map((acc) => (
-                <button
-                  key={acc.label}
-                  type="button"
-                  onClick={() => { setEmail(acc.email); setPassword('FleetFlow2024!') }}
-                  className="flex items-center justify-between px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/8 hover:border-white/15 transition-all text-xs group"
-                >
-                  <span className="text-slate-400 group-hover:text-slate-300">{acc.label}</span>
-                  <span className={`text-[10px] font-semibold ${acc.color}`}>Fill →</span>
-                </button>
-              ))}
-            </div>
-            <p className="text-[10px] text-slate-600 text-center mt-2">Default password: FleetFlow2024!</p>
-          </div>
         </div>
 
         {/* Footer */}
