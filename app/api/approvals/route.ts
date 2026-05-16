@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createNotification } from '@/lib/notifications'
+import { sendBookingApprovedEmail, sendBookingRejectedEmail } from '@/lib/email'
 
 export async function GET(request: NextRequest) {
   const supabase = createClient()
@@ -62,10 +63,10 @@ export async function POST(request: NextRequest) {
 
   await supabase.from('bookings').update(updatePayload).eq('id', booking_id)
 
-  // Notify the booking creator
+  // Fetch booking details (including guest email for notifications)
   const { data: booking } = await supabase
     .from('bookings')
-    .select('created_by, reference_number')
+    .select('created_by, reference_number, guest_name, guest_email, pickup_location, dropoff_location, pickup_datetime, vehicle_type')
     .eq('id', booking_id)
     .single()
 
@@ -75,6 +76,8 @@ export async function POST(request: NextRequest) {
       rejected: 'rejected',
       revision_requested: 'sent back for revision',
     }
+
+    // Internal notification for staff users
     await createNotification({
       userId: booking.created_by,
       title: `Booking ${actionLabels[action] ?? action}`,
@@ -82,6 +85,30 @@ export async function POST(request: NextRequest) {
       type: action === 'approved' ? 'approved' : 'system',
       bookingId: booking_id,
     })
+
+    // Email notification to guest
+    if (booking.guest_email) {
+      const emailPayload = {
+        guestName: booking.guest_name,
+        guestEmail: booking.guest_email,
+        referenceNumber: booking.reference_number,
+        pickupLocation: booking.pickup_location,
+        dropoffLocation: booking.dropoff_location,
+        pickupDatetime: booking.pickup_datetime,
+        vehicleType: booking.vehicle_type,
+        comments: comments ?? null,
+      }
+
+      if (action === 'approved') {
+        sendBookingApprovedEmail(emailPayload).catch((err) =>
+          console.error('[email] approved email failed:', err)
+        )
+      } else if (action === 'rejected') {
+        sendBookingRejectedEmail(emailPayload).catch((err) =>
+          console.error('[email] rejected email failed:', err)
+        )
+      }
+    }
   }
 
   return NextResponse.json({ data: approval }, { status: 201 })

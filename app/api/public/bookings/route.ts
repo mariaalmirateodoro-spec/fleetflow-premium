@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
+import { sendBookingConfirmationEmail } from '@/lib/email'
 
 // Public endpoint — no auth required. Uses anon key + RLS policy that allows
 // inserts where created_by IS NULL (guest bookings).
@@ -69,6 +70,20 @@ export async function POST(request: NextRequest) {
         }))
       )
     }
+
+    // Send confirmation email to guest (non-blocking — don't fail the booking if email fails)
+    sendBookingConfirmationEmail({
+      guestName: body.guest_name,
+      guestEmail: body.guest_email,
+      referenceNumber: data.reference_number,
+      pickupLocation: body.pickup_location,
+      dropoffLocation: body.dropoff_location,
+      pickupDatetime: body.pickup_datetime,
+      dropoffDatetime: body.dropoff_datetime ?? null,
+      vehicleType: body.vehicle_type,
+      guestCount: Number(body.guest_count),
+      specialRequests: body.special_requests ?? null,
+    }).catch((err) => console.error('[email] confirmation failed:', err))
 
     return NextResponse.json({ reference_number: data.reference_number }, { status: 201 })
   } catch {
