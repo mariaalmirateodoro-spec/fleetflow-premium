@@ -17,7 +17,7 @@ export async function GET() {
 
   const { data, error } = await resend.emails.send({
     from: process.env.EMAIL_FROM ?? 'FleetFlow Premium <onboarding@resend.dev>',
-    to: 'mariaalmira.teodoro@gmail.com', // send to your own email to bypass free-tier restriction
+    to: 'almira@perceptiongames.com', // Resend free-tier: must match the account owner email
     subject: '🔧 FleetFlow Email Test',
     html: '<p>This is a test email from FleetFlow. If you see this, emails are working!</p>',
   })
@@ -33,7 +33,7 @@ export async function GET() {
 
   return NextResponse.json({
     ok: true,
-    message: 'Email sent successfully! Check mariaalmira.teodoro@gmail.com',
+    message: 'Email sent successfully! Check almira@perceptiongames.com',
     resendId: data?.id,
   })
 }
