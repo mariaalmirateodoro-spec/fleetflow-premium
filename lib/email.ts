@@ -1,8 +1,22 @@
-import { Resend } from 'resend'
+import nodemailer from 'nodemailer'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.GMAIL_USER,
+    pass: process.env.GMAIL_APP_PASSWORD,
+  },
+})
 
-const FROM_EMAIL = process.env.EMAIL_FROM ?? 'FleetFlow Premium <onboarding@resend.dev>'
+const FROM_EMAIL = process.env.GMAIL_USER
+  ? `FleetFlow Premium <${process.env.GMAIL_USER}>`
+  : 'FleetFlow Premium <noreply@fleetflow.app>'
+
+async function sendEmail(to: string, subject: string, html: string) {
+  const info = await transporter.sendMail({ from: FROM_EMAIL, to, subject, html })
+  console.log('[email] sent, messageId:', info.messageId)
+  return info
+}
 
 // ─── Shared styles ────────────────────────────────────────────────────────────
 
@@ -113,18 +127,11 @@ export async function sendBookingConfirmationEmail(data: BookingConfirmationData
 </div>
 </body></html>`
 
-  const { data: result, error } = await resend.emails.send({
-    from: FROM_EMAIL,
-    to: data.guestEmail,
-    subject: `✅ Booking Received — Ref: ${data.referenceNumber}`,
+  return await sendEmail(
+    data.guestEmail,
+    `✅ Booking Received — Ref: ${data.referenceNumber}`,
     html,
-  })
-  if (error) {
-    console.error('[email] sendBookingConfirmationEmail error:', JSON.stringify(error))
-    throw new Error(JSON.stringify(error))
-  }
-  console.log('[email] confirmation sent, id:', result?.id)
-  return result
+  )
 }
 
 // ─── Email: Booking Approved ──────────────────────────────────────────────────
@@ -200,18 +207,11 @@ export async function sendBookingApprovedEmail(data: BookingStatusEmailData) {
 </div>
 </body></html>`
 
-  const { data: result, error } = await resend.emails.send({
-    from: FROM_EMAIL,
-    to: data.guestEmail,
-    subject: `🎉 Booking Approved — Ref: ${data.referenceNumber}`,
+  return await sendEmail(
+    data.guestEmail,
+    `🎉 Booking Approved — Ref: ${data.referenceNumber}`,
     html,
-  })
-  if (error) {
-    console.error('[email] sendBookingApprovedEmail error:', JSON.stringify(error))
-    throw new Error(JSON.stringify(error))
-  }
-  console.log('[email] approved email sent, id:', result?.id)
-  return result
+  )
 }
 
 // ─── Email: Booking Rejected ──────────────────────────────────────────────────
@@ -267,16 +267,9 @@ export async function sendBookingRejectedEmail(data: BookingStatusEmailData) {
 </div>
 </body></html>`
 
-  const { data: result, error } = await resend.emails.send({
-    from: FROM_EMAIL,
-    to: data.guestEmail,
-    subject: `Booking Update — Ref: ${data.referenceNumber}`,
+  return await sendEmail(
+    data.guestEmail,
+    `Booking Update — Ref: ${data.referenceNumber}`,
     html,
-  })
-  if (error) {
-    console.error('[email] sendBookingRejectedEmail error:', JSON.stringify(error))
-    throw new Error(JSON.stringify(error))
-  }
-  console.log('[email] rejected email sent, id:', result?.id)
-  return result
+  )
 }
