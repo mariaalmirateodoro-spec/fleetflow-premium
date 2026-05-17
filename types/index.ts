@@ -12,6 +12,14 @@ export type NotificationType = 'new_request' | 'approval_needed' | 'approved' | 
 // Database row types
 // ─────────────────────────────────────────────────────────────
 
+export interface NotificationPreferences {
+  new_booking_request: boolean
+  approval_needed: boolean
+  booking_approved: boolean
+  payment_due: boolean
+  system_notifications: boolean
+}
+
 export interface Profile {
   id: string
   email: string
@@ -22,6 +30,7 @@ export interface Profile {
   phone: string | null
   is_active: boolean
   last_login_at: string | null
+  notification_preferences: NotificationPreferences | null
   created_at: string
   updated_at: string
 }

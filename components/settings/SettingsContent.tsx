@@ -5,7 +5,7 @@ import { Loader2, Save, User, Lock, Bell } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/components/ui/Toast'
 import { getInitials, roleConfig } from '@/lib/utils'
-import type { Profile } from '@/types'
+import type { Profile, NotificationPreferences } from '@/types'
 
 interface Props { profile: Profile }
 
@@ -15,6 +15,18 @@ export function SettingsContent({ profile }: Props) {
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({ full_name: profile.full_name, phone: profile.phone ?? '', department: profile.department ?? '' })
   const [pwForm, setPwForm] = useState({ current: '', newPw: '', confirm: '' })
+
+  const defaultNotifPrefs: NotificationPreferences = {
+    new_booking_request: true,
+    approval_needed: true,
+    booking_approved: true,
+    payment_due: profile.role === 'finance',
+    system_notifications: false,
+  }
+  const [notifPrefs, setNotifPrefs] = useState<NotificationPreferences>(
+    profile.notification_preferences ?? defaultNotifPrefs
+  )
+  const [notifSaving, setNotifSaving] = useState(false)
 
   async function saveProfile(e: React.FormEvent) {
     e.preventDefault(); setSaving(true)
@@ -33,6 +45,17 @@ export function SettingsContent({ profile }: Props) {
     setSaving(false)
     if (error) toast(error.message, 'error')
     else { toast('Password updated!', 'success'); setPwForm({ current: '', newPw: '', confirm: '' }) }
+  }
+
+  async function saveNotifications(e: React.FormEvent) {
+    e.preventDefault(); setNotifSaving(true)
+    const supabase = createClient()
+    const { error } = await supabase
+      .from('profiles')
+      .update({ notification_preferences: notifPrefs })
+      .eq('id', profile.id)
+    setNotifSaving(false)
+    toast(error ? 'Failed to save preferences' : 'Notification preferences saved!', error ? 'error' : 'success')
   }
 
   const roleCfg = roleConfig[profile.role]
@@ -141,35 +164,47 @@ export function SettingsContent({ profile }: Props) {
 
       {/* Notifications tab */}
       {tab === 'notifications' && (
-        <div className="card space-y-4 animate-fade-in">
+        <form onSubmit={saveNotifications} className="card space-y-4 animate-fade-in">
           <h3 className="text-sm font-semibold text-white">Notification Preferences</h3>
-          <p className="text-xs text-slate-400">Control which events trigger notifications for you.</p>
-          {[
-            { label: 'New booking request', desc: 'When a new transport request is submitted', default: true },
-            { label: 'Approval needed', desc: 'When a booking is ready for your review', default: true },
-            { label: 'Booking approved', desc: 'When your submitted booking gets approved', default: true },
-            { label: 'Payment due reminder', desc: 'When a supplier payment is coming due', default: profile.role === 'finance' },
-            { label: 'System notifications', desc: 'General system updates and announcements', default: false },
-          ].map((item) => (
-            <div key={item.label} className="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
+          <p className="text-xs text-slate-400">Control which in-app events trigger notifications for you.</p>
+          {(
+            [
+              { key: 'new_booking_request', label: 'New booking request', desc: 'When a new transport request is submitted' },
+              { key: 'approval_needed',     label: 'Approval needed',     desc: 'When a booking is ready for your review' },
+              { key: 'booking_approved',    label: 'Booking approved',    desc: 'When your submitted booking gets approved' },
+              { key: 'payment_due',         label: 'Payment due reminder',desc: 'When a supplier payment is coming due' },
+              { key: 'system_notifications',label: 'System notifications',desc: 'General system updates and announcements' },
+            ] as { key: keyof NotificationPreferences; label: string; desc: string }[]
+          ).map((item) => (
+            <div key={item.key} className="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
               <div>
                 <p className="text-sm text-slate-200 font-medium">{item.label}</p>
                 <p className="text-xs text-slate-500">{item.desc}</p>
               </div>
-              <div className="relative">
-                <input type="checkbox" defaultChecked={item.default} className="sr-only peer" id={`notif-${item.label}`} />
-                <label htmlFor={`notif-${item.label}`} className="w-10 h-5 flex rounded-full cursor-pointer bg-white/10 peer-checked:bg-fleet-600 transition-colors">
-                  <span className="m-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform peer-checked:translate-x-5 block" />
-                </label>
-              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={notifPrefs[item.key]}
+                onClick={() => setNotifPrefs((p) => ({ ...p, [item.key]: !p[item.key] }))}
+                className={`relative w-10 h-5 rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-fleet-500 ${
+                  notifPrefs[item.key] ? 'bg-fleet-600' : 'bg-white/10'
+                }`}
+              >
+                <span
+                  className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                    notifPrefs[item.key] ? 'translate-x-5' : 'translate-x-0'
+                  }`}
+                />
+              </button>
             </div>
           ))}
-          <div className="flex justify-end pt-2">
-            <button onClick={() => toast('Preferences saved!', 'success')} className="btn-primary">
-              <Save className="w-4 h-4" /> Save Preferences
+          <div className="flex justify-end pt-2 border-t border-white/8">
+            <button type="submit" disabled={notifSaving} className="btn-primary">
+              {notifSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              Save Preferences
             </button>
           </div>
-        </div>
+        </form>
       )}
     </div>
   )
