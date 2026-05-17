@@ -292,3 +292,83 @@ export async function sendBookingRejectedEmail(data: BookingStatusEmailData) {
     html,
   )
 }
+
+// ─── Email: Booking Cancelled (by staff) ─────────────────────────────────────
+
+interface BookingCancelledEmailData {
+  guestName: string
+  guestEmail: string
+  referenceNumber: string
+  pickupLocation: string
+  dropoffLocation: string
+  pickupDatetime: string
+  cancellationReason?: string | null
+}
+
+export async function sendBookingCancelledEmail(data: BookingCancelledEmailData) {
+  const pickup = new Date(data.pickupDatetime).toLocaleString('en-US', {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  })
+
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '') ?? ''
+  const statusUrl = siteUrl ? `${siteUrl}/book/status/${data.referenceNumber}` : ''
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Booking Cancelled</title>
+<style>${baseStyles}</style></head>
+<body>
+<div class="wrapper">
+  <div class="card">
+    <div class="header">
+      <div class="header-logo">🚗</div>
+      <h1>FleetFlow Premium</h1>
+      <p>Guest Transport Management System</p>
+    </div>
+    <div class="body">
+      <p class="greeting">Hi <strong style="color:#e2e8f0">${data.guestName}</strong>,</p>
+
+      <div style="text-align:center;margin-bottom:28px;">
+        <span class="status-badge badge-rejected">✗ Booking Cancelled</span>
+      </div>
+
+      <div class="ref-box">
+        <p class="ref-label">Booking Reference</p>
+        <p class="ref-number">${data.referenceNumber}</p>
+      </div>
+
+      <p style="color:#94a3b8;font-size:14px;line-height:1.6;margin:0 0 24px;">
+        We regret to inform you that your transport booking from <strong style="color:#e2e8f0">${data.pickupLocation}</strong> to <strong style="color:#e2e8f0">${data.dropoffLocation}</strong> scheduled for <strong style="color:#e2e8f0">${pickup}</strong> has been cancelled.
+      </p>
+
+      ${data.cancellationReason ? `
+      <p class="section-title">Reason</p>
+      <div class="note-box">${data.cancellationReason}</div>
+      ` : ''}
+
+      <div class="note-box">
+        <strong style="color:#c7d2fe">Need to rebook or have questions?</strong><br/>
+        Please contact our team and quote your reference number. We apologise for any inconvenience this may cause.
+      </div>
+
+      ${statusUrl ? `<a href="${statusUrl}" class="cta-btn">View Booking Status →</a>` : ''}
+
+      <p style="color:#64748b;font-size:13px;text-align:center;margin:0">
+        Reference: <strong style="color:#818cf8">${data.referenceNumber}</strong>
+      </p>
+    </div>
+    <div class="footer">
+      <p>© ${new Date().getFullYear()} FleetFlow Premium · Internal System</p>
+      <p>This is an automated message. Please do not reply directly to this email.</p>
+    </div>
+  </div>
+</div>
+</body></html>`
+
+  return await sendEmail(
+    data.guestEmail,
+    `Booking Cancelled — Ref: ${data.referenceNumber}`,
+    html,
+  )
+}

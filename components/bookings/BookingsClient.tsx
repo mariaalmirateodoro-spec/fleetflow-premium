@@ -1,13 +1,14 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { Plus, Search, Filter, Download, RefreshCw, Trash2 } from 'lucide-react'
+import { Plus, Search, Filter, Download, RefreshCw, Trash2, XCircle, Loader2 } from 'lucide-react'
 import { cn, formatDateTime, formatCurrency, vehicleLabels } from '@/lib/utils'
 import { StatusBadge } from '@/components/ui/Badge'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { TableSkeleton } from '@/components/ui/LoadingSpinner'
 import { BookingModal } from '@/components/bookings/BookingModal'
 import { BookingDetailModal } from '@/components/bookings/BookingDetailModal'
+import { Modal } from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
 import { createClient } from '@/lib/supabase/client'
 import type { Booking, BookingStatus, Profile, Supplier, VehicleType } from '@/types'
@@ -32,6 +33,9 @@ export function BookingsClient({ initialBookings, suppliers, profile }: Props) {
   const [statusFilter, setStatusFilter] = useState<BookingStatus | 'all'>('all')
   const [vehicleFilter, setVehicleFilter] = useState<VehicleType | 'all'>('all')
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [cancelModal, setCancelModal] = useState<{ bookingId: string; ref: string } | null>(null)
+  const [cancelReason, setCancelReason] = useState('')
+  const [cancelLoading, setCancelLoading] = useState(false)
 
   const filtered = useMemo(() => {
     return bookings.filter((b) => {
@@ -71,18 +75,32 @@ export function BookingsClient({ initialBookings, suppliers, profile }: Props) {
     setShowModal(true)
   }
 
-  async function handleDelete(bookingId: string) {
-    if (!confirm('Cancel this booking?')) return
-    const supabase = createClient()
-    const { error } = await supabase
-      .from('bookings')
-      .update({ status: 'cancelled', cancelled_at: new Date().toISOString() })
-      .eq('id', bookingId)
-    if (error) {
-      toast('Failed to cancel booking', 'error')
-    } else {
+  function handleDelete(bookingId: string) {
+    const booking = bookings.find((b) => b.id === bookingId)
+    setCancelReason('')
+    setCancelModal({ bookingId, ref: booking?.reference_number ?? bookingId })
+  }
+
+  async function confirmCancel() {
+    if (!cancelModal || !cancelReason.trim()) return
+    setCancelLoading(true)
+    try {
+      const res = await fetch(`/api/bookings/${cancelModal.bookingId}/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: cancelReason.trim() }),
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error ?? 'Request failed')
+      }
       toast('Booking cancelled', 'success')
+      setCancelModal(null)
       await refresh()
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Something went wrong', 'error')
+    } finally {
+      setCancelLoading(false)
     }
   }
 
@@ -336,6 +354,52 @@ export function BookingsClient({ initialBookings, suppliers, profile }: Props) {
           onEdit={() => handleEdit(selectedBooking)}
           onRefresh={refresh}
         />
+      )}
+
+      {/* Cancel booking modal */}
+      {cancelModal && (
+        <Modal
+          open={!!cancelModal}
+          onClose={() => setCancelModal(null)}
+          title="Cancel Booking"
+          subtitle={`Reference: ${cancelModal.ref}`}
+          size="sm"
+        >
+          <div className="space-y-4">
+            <div className="flex items-start gap-3 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-3">
+              <XCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+              <p className="text-xs text-red-300 leading-relaxed">
+                This will cancel the booking and notify the guest by email if an address is on file. This action cannot be undone.
+              </p>
+            </div>
+            <div>
+              <label className="text-xs text-slate-400 mb-1.5 block font-medium">
+                Cancellation Reason <span className="text-red-400">*</span>
+              </label>
+              <textarea
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                placeholder="Please provide a reason for cancellation…"
+                rows={3}
+                className="input-dark resize-none"
+                autoFocus
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setCancelModal(null)} className="btn-secondary">
+                Keep Booking
+              </button>
+              <button
+                onClick={confirmCancel}
+                disabled={cancelLoading || !cancelReason.trim()}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm border border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all disabled:opacity-50"
+              >
+                {cancelLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4" />}
+                Confirm Cancellation
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
     </>
   )

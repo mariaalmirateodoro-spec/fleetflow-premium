@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Edit2, Mail, Plus, Star, Loader2, Sparkles, Check, Copy, Send } from 'lucide-react'
+import { Edit2, Mail, Plus, Star, Loader2, Sparkles, Check, Copy, Send, XCircle } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { StatusBadge, Badge } from '@/components/ui/Badge'
 import { formatDateTime, formatCurrency, vehicleLabels } from '@/lib/utils'
@@ -25,6 +25,11 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
   const [showAddQuote, setShowAddQuote] = useState(false)
   const [aiLoading, setAiLoading] = useState(false)
   const [addingQuote, setAddingQuote] = useState(false)
+
+  // Cancellation state
+  const [showCancelModal, setShowCancelModal] = useState(false)
+  const [cancelReason, setCancelReason] = useState('')
+  const [cancelLoading, setCancelLoading] = useState(false)
 
   // Guest notification state
   const [guestEmailDraft, setGuestEmailDraft] = useState('')
@@ -298,6 +303,31 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
     window.open(gmailUrl, '_blank')
   }
 
+  async function handleCancel() {
+    if (!cancelReason.trim()) return
+    setCancelLoading(true)
+    try {
+      const res = await fetch(`/api/bookings/${booking.id}/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: cancelReason.trim() }),
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error ?? 'Request failed')
+      }
+      toast('Booking cancelled', 'success')
+      setShowCancelModal(false)
+      setCancelReason('')
+      onRefresh()
+      onClose()
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Something went wrong', 'error')
+    } finally {
+      setCancelLoading(false)
+    }
+  }
+
   const cheapest = quotes.length > 0 ? quotes[0] : null
   const bestValue = quotes.length > 1
     ? quotes.reduce((best, q) => {
@@ -311,6 +341,8 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
 
   const canEdit = profile.role !== 'finance'
   const canManageQuotes = ['admin', 'manager', 'staff'].includes(profile.role)
+  const canCancel = ['admin', 'manager', 'staff'].includes(profile.role) &&
+    booking.status !== 'cancelled' && booking.status !== 'completed'
   const selectedSupplier = suppliers.find((s) => s.id === selectedSupplierId)
   const currentDraft = contactTab === 'email' ? emailDraft : viberDraft
 
@@ -327,6 +359,14 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
             {canEdit && booking.status === 'pending' && (
               <button onClick={onEdit} className="btn-secondary text-xs py-1.5 px-3">
                 <Edit2 className="w-3.5 h-3.5" /> Edit
+              </button>
+            )}
+            {canCancel && (
+              <button
+                onClick={() => { setCancelReason(''); setShowCancelModal(true) }}
+                className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-xl border border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all"
+              >
+                <XCircle className="w-3.5 h-3.5" /> Cancel
               </button>
             )}
           </div>
@@ -779,6 +819,52 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
         </div>
 
       </div>
+
+      {/* Cancel booking modal */}
+      {showCancelModal && (
+        <Modal
+          open={showCancelModal}
+          onClose={() => setShowCancelModal(false)}
+          title="Cancel Booking"
+          subtitle={`${booking.reference_number} · ${booking.guest_name}`}
+          size="sm"
+        >
+          <div className="space-y-4">
+            <div className="flex items-start gap-3 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-3">
+              <XCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+              <p className="text-xs text-red-300 leading-relaxed">
+                This will cancel the booking and notify the guest by email. This action cannot be undone.
+              </p>
+            </div>
+            <div>
+              <label className="text-xs text-slate-400 mb-1.5 block font-medium">
+                Cancellation Reason <span className="text-red-400">*</span>
+              </label>
+              <textarea
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                placeholder="Please provide a reason for cancellation…"
+                rows={3}
+                className="input-dark resize-none"
+                autoFocus
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setShowCancelModal(false)} className="btn-secondary">
+                Keep Booking
+              </button>
+              <button
+                onClick={handleCancel}
+                disabled={cancelLoading || !cancelReason.trim()}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm border border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all disabled:opacity-50"
+              >
+                {cancelLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4" />}
+                Confirm Cancellation
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </Modal>
   )
 }
