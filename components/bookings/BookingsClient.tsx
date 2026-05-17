@@ -32,12 +32,16 @@ export function BookingsClient({ initialBookings, suppliers, profile }: Props) {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<BookingStatus | 'all'>('all')
   const [vehicleFilter, setVehicleFilter] = useState<VehicleType | 'all'>('all')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [cancelModal, setCancelModal] = useState<{ bookingId: string; ref: string } | null>(null)
   const [cancelReason, setCancelReason] = useState('')
   const [cancelLoading, setCancelLoading] = useState(false)
 
   const filtered = useMemo(() => {
+    const fromMs = dateFrom ? new Date(dateFrom).getTime() : null
+    const toMs = dateTo ? new Date(dateTo + 'T23:59:59').getTime() : null
     return bookings.filter((b) => {
       const q = search.toLowerCase()
       const matchesSearch =
@@ -49,9 +53,12 @@ export function BookingsClient({ initialBookings, suppliers, profile }: Props) {
         b.guest_nationality.toLowerCase().includes(q)
       const matchesStatus = statusFilter === 'all' || b.status === statusFilter
       const matchesVehicle = vehicleFilter === 'all' || b.vehicle_type === vehicleFilter
-      return matchesSearch && matchesStatus && matchesVehicle
+      const pickupMs = b.pickup_datetime ? new Date(b.pickup_datetime).getTime() : null
+      const matchesFrom = !fromMs || (pickupMs != null && pickupMs >= fromMs)
+      const matchesTo = !toMs || (pickupMs != null && pickupMs <= toMs)
+      return matchesSearch && matchesStatus && matchesVehicle && matchesFrom && matchesTo
     })
-  }, [bookings, search, statusFilter, vehicleFilter])
+  }, [bookings, search, statusFilter, vehicleFilter, dateFrom, dateTo])
 
   async function refresh() {
     setLoading(true)
@@ -177,20 +184,35 @@ export function BookingsClient({ initialBookings, suppliers, profile }: Props) {
   return (
     <>
       {/* Header actions */}
-      <div className="flex flex-col sm:flex-row gap-3 mb-5">
-        {/* Search */}
-        <div className="relative flex-1">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by guest, reference, location…"
-            className="input-dark pl-10 w-full"
-          />
+      <div className="flex flex-col gap-3 mb-5">
+        {/* Row 1: search + action buttons */}
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by guest, reference, location…"
+              className="input-dark pl-10 w-full"
+            />
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button onClick={refresh} className="btn-secondary p-2.5" title="Refresh">
+              <RefreshCw className={cn('w-4 h-4', loading && 'animate-spin')} />
+            </button>
+            <button onClick={exportCSV} className="btn-secondary p-2.5" title="Export filtered results as CSV">
+              <Download className="w-4 h-4" />
+            </button>
+            {canCreate && (
+              <button onClick={() => { setSelectedBooking(null); setShowModal(true) }} className="btn-primary">
+                <Plus className="w-4 h-4" /> New Booking
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* Filters */}
-        <div className="flex items-center gap-2">
+        {/* Row 2: status + vehicle + date range filters */}
+        <div className="flex flex-wrap items-center gap-2">
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as BookingStatus | 'all')}
@@ -209,18 +231,40 @@ export function BookingsClient({ initialBookings, suppliers, profile }: Props) {
             {VEHICLES.map((v) => <option key={v} value={v}>{vehicleLabels[v]}</option>)}
           </select>
 
-          <button onClick={refresh} className="btn-secondary p-2.5" title="Refresh">
-            <RefreshCw className={cn('w-4 h-4', loading && 'animate-spin')} />
-          </button>
+          {/* Date range */}
+          <div className="flex items-center gap-1.5">
+            <Filter className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="input-dark py-2 text-xs w-36"
+              title="Pickup from"
+            />
+            <span className="text-slate-600 text-xs">–</span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="input-dark py-2 text-xs w-36"
+              title="Pickup to"
+            />
+            {(dateFrom || dateTo) && (
+              <button
+                onClick={() => { setDateFrom(''); setDateTo('') }}
+                className="text-slate-500 hover:text-slate-300 transition-colors text-xs px-2 py-1 rounded-lg hover:bg-white/5"
+                title="Clear date filter"
+              >
+                ✕
+              </button>
+            )}
+          </div>
 
-          <button onClick={exportCSV} className="btn-secondary p-2.5" title="Export CSV">
-            <Download className="w-4 h-4" />
-          </button>
-
-          {canCreate && (
-            <button onClick={() => { setSelectedBooking(null); setShowModal(true) }} className="btn-primary">
-              <Plus className="w-4 h-4" /> New Booking
-            </button>
+          {/* Active filter count */}
+          {(dateFrom || dateTo || statusFilter !== 'all' || vehicleFilter !== 'all' || search) && (
+            <span className="text-[11px] text-slate-500">
+              {filtered.length} result{filtered.length !== 1 ? 's' : ''}
+            </span>
           )}
         </div>
       </div>
