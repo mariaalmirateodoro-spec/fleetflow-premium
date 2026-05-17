@@ -155,6 +155,8 @@ interface BookingStatusEmailData {
   pickupDatetime: string
   vehicleType: string
   comments?: string | null
+  supplierName?: string
+  finalCost?: number
 }
 
 export async function sendBookingApprovedEmail(data: BookingStatusEmailData) {
@@ -162,6 +164,9 @@ export async function sendBookingApprovedEmail(data: BookingStatusEmailData) {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
     hour: '2-digit', minute: '2-digit',
   })
+
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '') ?? ''
+  const statusUrl = siteUrl ? `${siteUrl}/book/status/${data.referenceNumber}` : ''
 
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -179,7 +184,7 @@ export async function sendBookingApprovedEmail(data: BookingStatusEmailData) {
       <p class="greeting">Great news, <strong style="color:#e2e8f0">${data.guestName}</strong>!</p>
 
       <div style="text-align:center;margin-bottom:28px;">
-        <span class="status-badge badge-approved">✓ Booking Approved</span>
+        <span class="status-badge badge-approved">✓ Booking Confirmed</span>
       </div>
 
       <div class="ref-box">
@@ -193,6 +198,8 @@ export async function sendBookingApprovedEmail(data: BookingStatusEmailData) {
         <tr><td>Drop-off Location</td><td>${data.dropoffLocation}</td></tr>
         <tr><td>Pickup Date &amp; Time</td><td>${pickup}</td></tr>
         <tr><td>Vehicle Type</td><td>${data.vehicleType}</td></tr>
+        ${data.supplierName ? `<tr><td>Transport Provider</td><td><strong>${data.supplierName}</strong></td></tr>` : ''}
+        ${data.finalCost != null ? `<tr><td>Total Cost</td><td><strong style="color:#10b981">$${data.finalCost.toLocaleString('en-US', { minimumFractionDigits: 2 })}</strong></td></tr>` : ''}
       </table>
 
       ${data.comments ? `
@@ -201,9 +208,11 @@ export async function sendBookingApprovedEmail(data: BookingStatusEmailData) {
       ` : ''}
 
       <div class="note-box">
-        <strong style="color:#c7d2fe">Your driver will be ready for you.</strong><br/>
+        <strong style="color:#c7d2fe">Your vehicle will be ready for you.</strong><br/>
         Please be at the pickup location a few minutes before your scheduled time. If you need to make any changes, please contact our team immediately with your reference number.
       </div>
+
+      ${statusUrl ? `<a href="${statusUrl}" class="cta-btn">View Booking Status →</a>` : ''}
 
       <p style="color:#64748b;font-size:13px;text-align:center;margin:0">
         Reference: <strong style="color:#818cf8">${data.referenceNumber}</strong>
@@ -219,7 +228,7 @@ export async function sendBookingApprovedEmail(data: BookingStatusEmailData) {
 
   return await sendEmail(
     data.guestEmail,
-    `🎉 Booking Approved — Ref: ${data.referenceNumber}`,
+    `🎉 Booking Confirmed — Ref: ${data.referenceNumber}`,
     html,
   )
 }

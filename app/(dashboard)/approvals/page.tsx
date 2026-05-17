@@ -25,6 +25,12 @@ export default async function ApprovalsPage() {
     .order('created_at', { ascending: false })
     .limit(10)
 
+  const { data: suppliers } = await supabase
+    .from('suppliers')
+    .select('id, company_name, contact_person, phone, rating')
+    .eq('is_available', true)
+    .order('company_name', { ascending: true })
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <Topbar profile={profile} title="Approvals" subtitle="Review and approve booking requests" />
@@ -33,6 +39,7 @@ export default async function ApprovalsPage() {
           pendingBookings={bookings ?? []}
           recentApprovals={recentApprovals ?? []}
           profile={profile}
+          suppliers={suppliers ?? []}
         />
       </div>
     </div>

@@ -1,79 +1,77 @@
 'use client'
 
 import { useState } from 'react'
-import { CheckCircle, XCircle, MessageSquare, Clock, Loader2, ChevronDown, ChevronUp } from 'lucide-react'
+import { CheckCircle, XCircle, MessageSquare, Clock, Loader2, ChevronDown, ChevronUp, Truck } from 'lucide-react'
 import { formatDateTime, formatCurrency, vehicleLabels, timeAgo } from '@/lib/utils'
 import { StatusBadge, Badge } from '@/components/ui/Badge'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Modal } from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
-import { createClient } from '@/lib/supabase/client'
-import type { Approval, Booking, Profile } from '@/types'
+import type { Approval, Booking, Profile, Supplier } from '@/types'
 import { useRouter } from 'next/navigation'
 
 interface Props {
   pendingBookings: Booking[]
   recentApprovals: Approval[]
   profile: Profile
+  suppliers: Pick<Supplier, 'id' | 'company_name' | 'contact_person' | 'phone' | 'rating'>[]
 }
 
-export function ApprovalsClient({ pendingBookings, recentApprovals, profile }: Props) {
+export function ApprovalsClient({ pendingBookings, recentApprovals, profile, suppliers }: Props) {
   const { toast } = useToast()
   const router = useRouter()
   const [actionModal, setActionModal] = useState<{ booking: Booking; action: 'approved' | 'rejected' | 'revision_requested' } | null>(null)
   const [comments, setComments] = useState('')
+  const [selectedSupplierId, setSelectedSupplierId] = useState('')
+  const [finalCost, setFinalCost] = useState('')
   const [loading, setLoading] = useState(false)
   const [expanded, setExpanded] = useState<string | null>(null)
+
+  function openModal(booking: Booking, action: 'approved' | 'rejected' | 'revision_requested') {
+    setActionModal({ booking, action })
+    setComments('')
+    setSelectedSupplierId('')
+    setFinalCost('')
+  }
+
+  function closeModal() {
+    setActionModal(null)
+    setComments('')
+    setSelectedSupplierId('')
+    setFinalCost('')
+  }
 
   async function handleAction() {
     if (!actionModal) return
     setLoading(true)
-    const supabase = createClient()
 
-    // Insert approval record
-    await supabase.from('approvals').insert({
-      booking_id: actionModal.booking.id,
-      reviewer_id: profile.id,
-      action: actionModal.action,
-      comments: comments || null,
-    })
+    try {
+      const res = await fetch(`/api/bookings/${actionModal.booking.id}/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: actionModal.action,
+          comments: comments || null,
+          supplierId: selectedSupplierId || null,
+          finalCost: finalCost ? parseFloat(finalCost) : null,
+        }),
+      })
 
-    // Update booking status
-    const newStatus =
-      actionModal.action === 'approved' ? 'approved' :
-      actionModal.action === 'rejected' ? 'cancelled' : 'pending'
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error ?? 'Request failed')
+      }
 
-    await supabase.from('bookings').update({
-      status: newStatus,
-      approved_by: actionModal.action === 'approved' ? profile.id : null,
-      approved_at: actionModal.action === 'approved' ? new Date().toISOString() : null,
-      cancellation_reason: actionModal.action === 'rejected' ? comments : null,
-    }).eq('id', actionModal.booking.id)
-
-    // Notify the booking creator
-    const notifTitle =
-      actionModal.action === 'approved' ? 'Booking Approved! ✅' :
-      actionModal.action === 'rejected' ? 'Booking Rejected' : 'Revision Requested'
-    const notifMsg =
-      actionModal.action === 'approved'
-        ? `Your booking ${actionModal.booking.reference_number} has been approved.`
-        : actionModal.action === 'rejected'
-        ? `Your booking ${actionModal.booking.reference_number} was rejected. ${comments ? 'Reason: ' + comments : ''}`
-        : `Your booking ${actionModal.booking.reference_number} needs revision. ${comments ? 'Notes: ' + comments : ''}`
-
-    await supabase.from('notifications').insert({
-      user_id: actionModal.booking.created_by,
-      type: actionModal.action === 'approved' ? 'approved' : 'system',
-      title: notifTitle,
-      message: notifMsg,
-      booking_id: actionModal.booking.id,
-    })
-
-    toast(`Booking ${actionModal.action.replace('_', ' ')}`, 'success')
-    setActionModal(null)
-    setComments('')
-    setLoading(false)
-    router.refresh()
+      const actionLabel = actionModal.action === 'approved' ? 'approved' :
+                          actionModal.action === 'rejected' ? 'rejected' : 'revision requested'
+      toast(`Booking ${actionLabel}`, 'success')
+      closeModal()
+      router.refresh()
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Something went wrong', 'error')
+    } finally {
+      setLoading(false)
+    }
   }
 
   const actionConfig = {
@@ -81,6 +79,8 @@ export function ApprovalsClient({ pendingBookings, recentApprovals, profile }: P
     rejected: { label: 'Reject', icon: XCircle, color: 'bg-red-500/10 border-red-500/20 text-red-400 hover:bg-red-500/20' },
     revision_requested: { label: 'Request Revision', icon: MessageSquare, color: 'bg-amber-500/10 border-amber-500/20 text-amber-400 hover:bg-amber-500/20' },
   }
+
+  const isApproveAction = actionModal?.action === 'approved'
 
   return (
     <div className="space-y-6">
@@ -145,7 +145,7 @@ export function ApprovalsClient({ pendingBookings, recentApprovals, profile }: P
                       </div>
 
                       {booking.notes && (
-                        <p className="text-xs text-slate-500 mt-2 italic">"{booking.notes}"</p>
+                        <p className="text-xs text-slate-500 mt-2 italic">&ldquo;{booking.notes}&rdquo;</p>
                       )}
 
                       <p className="text-[11px] text-slate-600 mt-1.5">
@@ -161,7 +161,7 @@ export function ApprovalsClient({ pendingBookings, recentApprovals, profile }: P
                         return (
                           <button
                             key={action}
-                            onClick={() => setActionModal({ booking, action })}
+                            onClick={() => openModal(booking, action)}
                             className={`flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-xl border transition-all ${cfg.color}`}
                           >
                             <Icon className="w-3.5 h-3.5 shrink-0" />
@@ -235,7 +235,7 @@ export function ApprovalsClient({ pendingBookings, recentApprovals, profile }: P
                         <span className="font-mono text-fleet-400">{booking?.reference_number ?? '—'}</span>
                       </p>
                       {approval.comments && (
-                        <p className="text-[11px] text-slate-500 truncate">"{approval.comments}"</p>
+                        <p className="text-[11px] text-slate-500 truncate">&ldquo;{approval.comments}&rdquo;</p>
                       )}
                     </div>
                     <span className="text-[11px] text-slate-600 shrink-0">{timeAgo(approval.created_at)}</span>
@@ -251,15 +251,59 @@ export function ApprovalsClient({ pendingBookings, recentApprovals, profile }: P
       {actionModal && (
         <Modal
           open={!!actionModal}
-          onClose={() => { setActionModal(null); setComments('') }}
+          onClose={closeModal}
           title={actionConfig[actionModal.action].label}
           subtitle={`Booking ${actionModal.booking.reference_number} · ${actionModal.booking.guest_name}`}
           size="md"
         >
           <div className="space-y-4">
+            {/* Supplier assignment — only for approve */}
+            {isApproveAction && (
+              <>
+                <div>
+                  <label className="text-xs text-slate-400 mb-1.5 block font-medium">
+                    <span className="inline-flex items-center gap-1.5">
+                      <Truck className="w-3.5 h-3.5" />
+                      Assign Transport Supplier
+                    </span>
+                    <span className="ml-1 text-slate-600">(optional)</span>
+                  </label>
+                  <select
+                    value={selectedSupplierId}
+                    onChange={(e) => setSelectedSupplierId(e.target.value)}
+                    className="input-dark"
+                  >
+                    <option value="">— Select supplier —</option>
+                    {suppliers.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.company_name}{s.rating ? ` (★ ${s.rating})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs text-slate-400 mb-1.5 block font-medium">
+                    Final Cost (USD)
+                    <span className="ml-1 text-slate-600">(optional)</span>
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={finalCost}
+                    onChange={(e) => setFinalCost(e.target.value)}
+                    placeholder="e.g. 250.00"
+                    className="input-dark"
+                  />
+                </div>
+              </>
+            )}
+
+            {/* Comments / reason */}
             <div>
               <label className="text-xs text-slate-400 mb-1.5 block font-medium">
-                {actionModal.action === 'approved' ? 'Approval Notes (optional)' :
+                {actionModal.action === 'approved' ? 'Notes for the guest (optional)' :
                  actionModal.action === 'rejected' ? 'Rejection Reason *' : 'Revision Notes *'}
               </label>
               <textarea
@@ -267,7 +311,7 @@ export function ApprovalsClient({ pendingBookings, recentApprovals, profile }: P
                 onChange={(e) => setComments(e.target.value)}
                 placeholder={
                   actionModal.action === 'approved'
-                    ? 'Any notes for the team…'
+                    ? 'Any notes for the guest or team…'
                     : actionModal.action === 'rejected'
                     ? 'Please provide a reason for rejection…'
                     : 'What needs to be revised?'
@@ -276,8 +320,9 @@ export function ApprovalsClient({ pendingBookings, recentApprovals, profile }: P
                 className="input-dark resize-none"
               />
             </div>
+
             <div className="flex gap-2 justify-end">
-              <button onClick={() => { setActionModal(null); setComments('') }} className="btn-secondary">Cancel</button>
+              <button onClick={closeModal} className="btn-secondary">Cancel</button>
               <button
                 onClick={handleAction}
                 disabled={loading || (actionModal.action !== 'approved' && !comments)}

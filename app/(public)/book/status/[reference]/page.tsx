@@ -157,7 +157,7 @@ export default async function BookingStatusPage({
 
   const { data: booking, error } = await supabase
     .from('bookings')
-    .select('*')
+    .select('*, suppliers(company_name, contact_person, phone)')
     .eq('reference_number', params.reference.toUpperCase())
     .single()
 
@@ -205,6 +205,39 @@ export default async function BookingStatusPage({
               </div>
             )}
         </div>
+
+        {/* Supplier card — show when approved and supplier is assigned */}
+        {(booking.status === 'approved' || booking.status === 'completed') && booking.suppliers && (() => {
+          const supplier = booking.suppliers as { company_name?: string; contact_person?: string; phone?: string }
+          return supplier.company_name ? (
+            <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-5">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-emerald-400 text-base">🚐</span>
+                <h2 className="font-semibold text-emerald-300 text-sm">Your Transport Provider</h2>
+              </div>
+              <dl className="space-y-2">
+                <div className="flex justify-between">
+                  <dt className="text-slate-500 text-xs uppercase tracking-wider">Company</dt>
+                  <dd className="text-slate-200 text-sm font-medium">{supplier.company_name}</dd>
+                </div>
+                {supplier.contact_person && (
+                  <div className="flex justify-between">
+                    <dt className="text-slate-500 text-xs uppercase tracking-wider">Contact</dt>
+                    <dd className="text-slate-200 text-sm">{supplier.contact_person}</dd>
+                  </div>
+                )}
+                {supplier.phone && (
+                  <div className="flex justify-between">
+                    <dt className="text-slate-500 text-xs uppercase tracking-wider">Phone</dt>
+                    <dd className="text-slate-200 text-sm">
+                      <a href={`tel:${supplier.phone}`} className="text-emerald-400 hover:underline">{supplier.phone}</a>
+                    </dd>
+                  </div>
+                )}
+              </dl>
+            </div>
+          ) : null
+        })()}
 
         {/* Trip details */}
         <div className="rounded-2xl border border-white/8 bg-white/3 p-6">
