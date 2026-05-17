@@ -79,6 +79,12 @@ export async function sendBookingConfirmationEmail(data: BookingConfirmationData
       })
     : 'Not specified'
 
+  // Build the public status page URL for this booking
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '') ?? ''
+  const statusUrl = siteUrl
+    ? `${siteUrl}/book/status/${data.referenceNumber}`
+    : ''
+
   const html = `<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Booking Received</title>
@@ -114,6 +120,10 @@ export async function sendBookingConfirmationEmail(data: BookingConfirmationData
         <strong style="color:#c7d2fe">What happens next?</strong><br/>
         Our team will review your request and confirm your booking shortly. You'll receive another email once a decision has been made. Please keep your reference number handy.
       </div>
+
+      ${statusUrl ? `
+      <a href="${statusUrl}" class="cta-btn">Track Booking Status →</a>
+      ` : ''}
 
       <p style="color:#64748b;font-size:13px;text-align:center;margin:0">
         Questions? Contact our team and quote reference <strong style="color:#818cf8">${data.referenceNumber}</strong>.
