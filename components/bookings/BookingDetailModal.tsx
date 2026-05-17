@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Edit2, Mail, Plus, Star, Loader2, Sparkles, Check, Copy, Send, XCircle } from 'lucide-react'
+import { Edit2, Mail, Plus, Star, Loader2, Sparkles, Check, Copy, Send, XCircle, CheckCircle2, PencilLine } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { StatusBadge, Badge } from '@/components/ui/Badge'
 import { formatDateTime, formatCurrency, vehicleLabels } from '@/lib/utils'
@@ -30,6 +30,15 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
   const [showCancelModal, setShowCancelModal] = useState(false)
   const [cancelReason, setCancelReason] = useState('')
   const [cancelLoading, setCancelLoading] = useState(false)
+
+  // Completion state
+  const [showCompleteModal, setShowCompleteModal] = useState(false)
+  const [completeLoading, setCompleteLoading] = useState(false)
+
+  // Final cost editing
+  const [editingCost, setEditingCost] = useState(false)
+  const [costValue, setCostValue] = useState('')
+  const [costLoading, setCostLoading] = useState(false)
 
   // Guest notification state
   const [guestEmailDraft, setGuestEmailDraft] = useState('')
@@ -328,6 +337,53 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
     }
   }
 
+  async function handleComplete() {
+    setCompleteLoading(true)
+    try {
+      const res = await fetch(`/api/bookings/${booking.id}/complete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error ?? 'Request failed')
+      }
+      toast('Booking marked as completed!', 'success')
+      setShowCompleteModal(false)
+      onRefresh()
+      onClose()
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Something went wrong', 'error')
+    } finally {
+      setCompleteLoading(false)
+    }
+  }
+
+  async function handleSaveCost() {
+    const parsed = parseFloat(costValue)
+    if (isNaN(parsed) || parsed < 0) {
+      toast('Please enter a valid amount', 'error')
+      return
+    }
+    setCostLoading(true)
+    try {
+      const supabase = createClient()
+      const { error } = await supabase
+        .from('bookings')
+        .update({ final_cost_usd: parsed })
+        .eq('id', booking.id)
+      if (error) throw new Error(error.message)
+      toast('Final cost updated', 'success')
+      setEditingCost(false)
+      onRefresh()
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Something went wrong', 'error')
+    } finally {
+      setCostLoading(false)
+    }
+  }
+
   const cheapest = quotes.length > 0 ? quotes[0] : null
   const bestValue = quotes.length > 1
     ? quotes.reduce((best, q) => {
@@ -343,6 +399,10 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
   const canManageQuotes = ['admin', 'manager', 'staff'].includes(profile.role)
   const canCancel = ['admin', 'manager', 'staff'].includes(profile.role) &&
     booking.status !== 'cancelled' && booking.status !== 'completed'
+  const canComplete = ['admin', 'manager', 'staff'].includes(profile.role) &&
+    booking.status === 'approved'
+  const canEditCost = ['admin', 'manager', 'staff'].includes(profile.role) &&
+    (booking.status === 'approved' || booking.status === 'completed')
   const selectedSupplier = suppliers.find((s) => s.id === selectedSupplierId)
   const currentDraft = contactTab === 'email' ? emailDraft : viberDraft
 
@@ -369,6 +429,14 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
                 <XCircle className="w-3.5 h-3.5" /> Cancel
               </button>
             )}
+            {canComplete && (
+              <button
+                onClick={() => setShowCompleteModal(true)}
+                className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-all"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" /> Complete
+              </button>
+            )}
           </div>
         </div>
 
@@ -381,7 +449,6 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
             ['Vehicle', vehicleLabels[booking.vehicle_type]],
             ['Driver', booking.driver_required ? '✅ Required' : '❌ Not needed'],
             ['Budget', formatCurrency(booking.budget_usd)],
-            ['Final Cost', formatCurrency(booking.final_cost_usd)],
             ['Pickup', formatDateTime(booking.pickup_datetime)],
             ['Dropoff', booking.dropoff_datetime ? formatDateTime(booking.dropoff_datetime) : '—'],
             ['Pickup Location', booking.pickup_location],
@@ -392,6 +459,60 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
               <p className="text-xs text-slate-200 font-medium">{value}</p>
             </div>
           ))}
+
+          {/* Final Cost — editable for approved/completed bookings */}
+          <div className="bg-white/[0.03] rounded-xl px-3 py-2.5">
+            <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-0.5">Final Cost</p>
+            {editingCost ? (
+              <div className="flex items-center gap-1.5 mt-1">
+                <input
+                  type="number"
+                  min={0}
+                  step={0.01}
+                  value={costValue}
+                  onChange={(e) => setCostValue(e.target.value)}
+                  placeholder="0.00"
+                  className="input-dark text-xs py-1 px-2 flex-1 min-w-0"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleSaveCost()
+                    if (e.key === 'Escape') setEditingCost(false)
+                  }}
+                />
+                <button
+                  onClick={handleSaveCost}
+                  disabled={costLoading}
+                  className="text-emerald-400 hover:text-emerald-300 disabled:opacity-50 shrink-0"
+                  title="Save"
+                >
+                  {costLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                </button>
+                <button
+                  onClick={() => setEditingCost(false)}
+                  className="text-slate-500 hover:text-slate-300 shrink-0"
+                  title="Cancel"
+                >
+                  <XCircle className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5">
+                <p className="text-xs text-slate-200 font-medium">{formatCurrency(booking.final_cost_usd)}</p>
+                {canEditCost && (
+                  <button
+                    onClick={() => {
+                      setCostValue(booking.final_cost_usd != null ? String(booking.final_cost_usd) : '')
+                      setEditingCost(true)
+                    }}
+                    className="text-slate-600 hover:text-slate-400 transition-colors"
+                    title="Edit final cost"
+                  >
+                    <PencilLine className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         {(booking.notes || booking.special_requests) && (
@@ -819,6 +940,39 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
         </div>
 
       </div>
+
+      {/* Complete booking modal */}
+      {showCompleteModal && (
+        <Modal
+          open={showCompleteModal}
+          onClose={() => setShowCompleteModal(false)}
+          title="Mark as Completed"
+          subtitle={`${booking.reference_number} · ${booking.guest_name}`}
+          size="sm"
+        >
+          <div className="space-y-4">
+            <div className="flex items-start gap-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-3 py-3">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+              <p className="text-xs text-emerald-300 leading-relaxed">
+                This confirms the trip has been delivered and the service is done. The booking will be moved to Completed and cannot be changed afterwards.
+              </p>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setShowCompleteModal(false)} className="btn-secondary">
+                Not Yet
+              </button>
+              <button
+                onClick={handleComplete}
+                disabled={completeLoading}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-all disabled:opacity-50"
+              >
+                {completeLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                Confirm Completion
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {/* Cancel booking modal */}
       {showCancelModal && (
