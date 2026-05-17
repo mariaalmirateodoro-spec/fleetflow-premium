@@ -117,18 +117,58 @@ export function BookingsClient({ initialBookings, suppliers, profile }: Props) {
   }
 
   function exportCSV() {
-    const headers = ['Reference', 'Guest', 'Nationality', 'Pickup', 'Dropoff', 'Vehicle', 'Driver', 'Budget', 'Status']
-    const rows = filtered.map((b) => [
-      b.reference_number, b.guest_name, b.guest_nationality,
-      b.pickup_location, b.dropoff_location,
-      vehicleLabels[b.vehicle_type], b.driver_required ? 'Yes' : 'No',
-      b.budget_usd ?? '', b.status,
-    ])
-    const csv = [headers, ...rows].map((r) => r.join(',')).join('\n')
-    const blob = new Blob([csv], { type: 'text/csv' })
+    // Properly escape a field value for CSV (RFC 4180)
+    function esc(val: string | number | null | undefined): string {
+      if (val == null) return ''
+      const s = String(val)
+      return s.includes(',') || s.includes('"') || s.includes('\n')
+        ? `"${s.replace(/"/g, '""')}"`
+        : s
+    }
+
+    const headers = [
+      'Reference', 'Guest Name', 'Nationality', 'Guests',
+      'Vehicle', 'Driver Required',
+      'Pickup Location', 'Dropoff Location',
+      'Pickup Date/Time', 'Dropoff Date/Time',
+      'Budget (USD)', 'Final Cost (USD)',
+      'Supplier', 'Status',
+      'Special Requests', 'Cancellation Reason',
+      'Created At',
+    ]
+
+    const rows = filtered.map((b) => {
+      const supplier = b.suppliers as { company_name?: string } | undefined
+      return [
+        b.reference_number,
+        b.guest_name,
+        b.guest_nationality,
+        b.guest_count,
+        vehicleLabels[b.vehicle_type],
+        b.driver_required ? 'Yes' : 'No',
+        b.pickup_location,
+        b.dropoff_location,
+        b.pickup_datetime ? formatDateTime(b.pickup_datetime) : '',
+        b.dropoff_datetime ? formatDateTime(b.dropoff_datetime) : '',
+        b.budget_usd ?? '',
+        b.final_cost_usd ?? '',
+        supplier?.company_name ?? '',
+        b.status,
+        b.special_requests ?? '',
+        b.cancellation_reason ?? '',
+        b.created_at ? formatDateTime(b.created_at) : '',
+      ].map(esc)
+    })
+
+    // UTF-8 BOM ensures Excel opens the file with correct encoding
+    const csv = '﻿' + [headers.map(esc), ...rows].map((r) => r.join(',')).join('\r\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
-    a.href = url; a.download = 'bookings.csv'; a.click()
+    const date = new Date().toISOString().slice(0, 10)
+    a.href = url
+    a.download = `bookings-${date}.csv`
+    a.click()
     URL.revokeObjectURL(url)
   }
 
