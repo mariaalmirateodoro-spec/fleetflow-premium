@@ -44,6 +44,8 @@ function BookingForm() {
     pickup_date: '',
     pickup_time: '08:00',
     dropoff_date: '',
+    rental_duration: '',
+    rental_duration_unit: 'days' as 'hours' | 'days',
     driver_required: true,
     special_requests: '',
   })
@@ -66,6 +68,22 @@ function BookingForm() {
         ? new Date(`${form.pickup_date}T${form.pickup_time}`).toISOString()
         : null
 
+      // Compute dropoff_datetime: explicit date takes priority, else derive from duration
+      let dropoff_datetime: string | null = null
+      if (form.dropoff_date) {
+        dropoff_datetime = new Date(`${form.dropoff_date}T12:00`).toISOString()
+      } else if (form.rental_duration && pickup_datetime) {
+        const durationMs = parseInt(form.rental_duration) *
+          (form.rental_duration_unit === 'hours' ? 3_600_000 : 86_400_000)
+        dropoff_datetime = new Date(new Date(pickup_datetime).getTime() + durationMs).toISOString()
+      }
+
+      // Prepend rental duration note to special_requests for staff visibility
+      const durationNote = form.rental_duration
+        ? `Rental duration: ${form.rental_duration} ${form.rental_duration_unit}`
+        : ''
+      const specialRequests = [durationNote, form.special_requests].filter(Boolean).join('\n') || null
+
       const res = await fetch('/api/public/bookings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -79,12 +97,10 @@ function BookingForm() {
           pickup_location: form.pickup_location,
           dropoff_location: form.dropoff_location,
           pickup_datetime,
-          dropoff_datetime: form.dropoff_date
-            ? new Date(`${form.dropoff_date}T12:00`).toISOString()
-            : null,
+          dropoff_datetime,
           vehicle_type: form.vehicle_type,
           driver_required: form.driver_required,
-          special_requests: form.special_requests || null,
+          special_requests: specialRequests,
         }),
       })
 
@@ -202,6 +218,43 @@ function BookingForm() {
               value={form.dropoff_date}
               onChange={(e) => set('dropoff_date', e.target.value)}
             />
+          </div>
+
+          {/* Rental duration */}
+          <div>
+            <label className={labelCls}>
+              Rental duration <span className="text-slate-500 font-normal">(optional)</span>
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="number"
+                min="1"
+                max="365"
+                className={inputCls}
+                placeholder="e.g. 3"
+                value={form.rental_duration}
+                onChange={(e) => set('rental_duration', e.target.value)}
+              />
+              <div className="flex rounded-xl border border-white/10 overflow-hidden flex-shrink-0">
+                {(['hours', 'days'] as const).map((unit) => (
+                  <button
+                    key={unit}
+                    type="button"
+                    onClick={() => set('rental_duration_unit', unit)}
+                    className={`px-4 py-2.5 text-sm font-medium transition-colors ${
+                      form.rental_duration_unit === unit
+                        ? 'bg-fleet-600 text-white'
+                        : 'bg-white/5 text-slate-400 hover:text-white hover:bg-white/10'
+                    }`}
+                  >
+                    {unit.charAt(0).toUpperCase() + unit.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <p className="text-xs text-slate-500 mt-1.5">
+              We'll use this to estimate your drop-off time if no date is selected above.
+            </p>
           </div>
 
           {/* Driver toggle */}
