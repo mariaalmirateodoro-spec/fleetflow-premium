@@ -41,9 +41,10 @@ export function BookingsClient({ initialBookings, suppliers, drivers, profile }:
   const [cancelReason, setCancelReason] = useState('')
   const [cancelLoading, setCancelLoading] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
+  const [driverNeededFilter, setDriverNeededFilter] = useState(false)
 
   // Reset to page 1 whenever any filter changes
-  useEffect(() => { setCurrentPage(1) }, [search, statusFilter, vehicleFilter, dateFrom, dateTo])
+  useEffect(() => { setCurrentPage(1) }, [search, statusFilter, vehicleFilter, dateFrom, dateTo, driverNeededFilter])
 
   const filtered = useMemo(() => {
     const fromMs = dateFrom ? new Date(dateFrom).getTime() : null
@@ -62,9 +63,11 @@ export function BookingsClient({ initialBookings, suppliers, drivers, profile }:
       const pickupMs = b.pickup_datetime ? new Date(b.pickup_datetime).getTime() : null
       const matchesFrom = !fromMs || (pickupMs != null && pickupMs >= fromMs)
       const matchesTo = !toMs || (pickupMs != null && pickupMs <= toMs)
-      return matchesSearch && matchesStatus && matchesVehicle && matchesFrom && matchesTo
+      // "Driver needed" = driver is required but not yet assigned
+      const matchesDriverNeeded = !driverNeededFilter || (b.driver_required && !b.driver_id)
+      return matchesSearch && matchesStatus && matchesVehicle && matchesFrom && matchesTo && matchesDriverNeeded
     })
-  }, [bookings, search, statusFilter, vehicleFilter, dateFrom, dateTo])
+  }, [bookings, search, statusFilter, vehicleFilter, dateFrom, dateTo, driverNeededFilter])
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   const paginated = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
@@ -144,7 +147,7 @@ export function BookingsClient({ initialBookings, suppliers, drivers, profile }:
 
     const headers = [
       'Reference', 'Guest Name', 'Nationality', 'Guests',
-      'Vehicle', 'Driver Required',
+      'Vehicle', 'Driver Required', 'Assigned Driver',
       'Pickup Location', 'Dropoff Location',
       'Pickup Date/Time', 'Dropoff Date/Time',
       'Budget (USD)', 'Final Cost (USD)',
@@ -155,6 +158,7 @@ export function BookingsClient({ initialBookings, suppliers, drivers, profile }:
 
     const rows = filtered.map((b) => {
       const supplier = b.suppliers as { company_name?: string } | undefined
+      const driver = b.drivers as { full_name?: string } | undefined
       return [
         b.reference_number,
         b.guest_name,
@@ -162,6 +166,7 @@ export function BookingsClient({ initialBookings, suppliers, drivers, profile }:
         b.guest_count,
         vehicleLabels[b.vehicle_type],
         b.driver_required ? 'Yes' : 'No',
+        driver?.full_name ?? '',
         b.pickup_location,
         b.dropoff_location,
         b.pickup_datetime ? formatDateTime(b.pickup_datetime) : '',
@@ -239,6 +244,23 @@ export function BookingsClient({ initialBookings, suppliers, drivers, profile }:
             <option value="all">All Vehicles</option>
             {VEHICLES.map((v) => <option key={v} value={v}>{vehicleLabels[v]}</option>)}
           </select>
+
+          {/* Driver needed quick-filter */}
+          <button
+            onClick={() => setDriverNeededFilter((v) => !v)}
+            className={cn(
+              'flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-medium transition-all',
+              driverNeededFilter
+                ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
+                : 'bg-white/5 border-white/10 text-slate-400 hover:text-slate-200 hover:bg-white/8'
+            )}
+            title="Show only bookings that need a driver assigned"
+          >
+            🧑‍✈️ Driver needed
+            {driverNeededFilter && (
+              <span className="ml-0.5 text-amber-400/70">✕</span>
+            )}
+          </button>
 
           {/* Date range */}
           <div className="flex items-center gap-1.5">
