@@ -206,8 +206,8 @@ export default async function BookingStatusPage({
             )}
         </div>
 
-        {/* Supplier card — show when approved and supplier is assigned */}
-        {(booking.status === 'approved' || booking.status === 'completed') && booking.suppliers && (() => {
+        {/* Supplier card — show whenever a supplier is assigned */}
+        {booking.suppliers && (() => {
           const supplier = booking.suppliers as { company_name?: string; contact_person?: string; phone?: string }
           return supplier.company_name ? (
             <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-5">
@@ -239,8 +239,8 @@ export default async function BookingStatusPage({
           ) : null
         })()}
 
-        {/* Driver card — show when approved/completed and a driver is assigned */}
-        {(booking.status === 'approved' || booking.status === 'completed') && booking.drivers && (() => {
+        {/* Driver card — show whenever a driver is assigned */}
+        {booking.drivers && (() => {
           const driver = booking.drivers as { full_name?: string; phone?: string }
           return driver.full_name ? (
             <div className="rounded-2xl border border-blue-500/20 bg-blue-500/5 p-5">
