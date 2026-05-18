@@ -30,6 +30,10 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, drivers,
   // Driver assignment state
   const [assignedDriverId, setAssignedDriverId] = useState<string | null>(booking.driver_id ?? null)
   const [driverLoading, setDriverLoading] = useState(false)
+  const [conflictWarning, setConflictWarning] = useState<{
+    conflicts: Array<{ reference_number: string; guest_name: string; pickup_datetime: string; dropoff_datetime: string | null }>
+    driverId: string
+  } | null>(null)
 
   // Cancellation state
   const [showCancelModal, setShowCancelModal] = useState(false)
@@ -94,7 +98,7 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, drivers,
     if (data) setQuotes(data)
   }
 
-  async function handleAssignDriver(driverId: string | null) {
+  async function doAssignDriver(driverId: string | null) {
     setDriverLoading(true)
     const supabase = createClient()
     const { error } = await supabase
@@ -109,6 +113,47 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, drivers,
       onRefresh()
     }
     setDriverLoading(false)
+  }
+
+  async function checkAndAssignDriver(driverId: string) {
+    setDriverLoading(true)
+    const supabase = createClient()
+
+    // Fetch other active bookings assigned to this driver
+    const { data: existing, error } = await supabase
+      .from('bookings')
+      .select('id, reference_number, guest_name, pickup_datetime, dropoff_datetime')
+      .eq('driver_id', driverId)
+      .neq('id', booking.id)
+      .in('status', ['pending', 'quoted', 'approved'])
+
+    if (error) {
+      toast(`Could not check conflicts: ${error.message}`, 'error')
+      setDriverLoading(false)
+      return
+    }
+
+    // Time-overlap check: treats null dropoff as pickup + 4 hours
+    const thisPickup = new Date(booking.pickup_datetime).getTime()
+    const thisDropoff = booking.dropoff_datetime
+      ? new Date(booking.dropoff_datetime).getTime()
+      : thisPickup + 4 * 60 * 60 * 1000
+
+    const conflicting = (existing ?? []).filter((b) => {
+      const otherPickup = new Date(b.pickup_datetime).getTime()
+      const otherDropoff = b.dropoff_datetime
+        ? new Date(b.dropoff_datetime).getTime()
+        : otherPickup + 4 * 60 * 60 * 1000
+      return thisPickup < otherDropoff && thisDropoff > otherPickup
+    })
+
+    setDriverLoading(false)
+
+    if (conflicting.length > 0) {
+      setConflictWarning({ conflicts: conflicting, driverId })
+    } else {
+      await doAssignDriver(driverId)
+    }
   }
 
   async function handleSelectQuote(quoteId: string) {
@@ -506,7 +551,7 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, drivers,
                 </div>
                 {canAssignDriver && (
                   <button
-                    onClick={() => handleAssignDriver(null)}
+                    onClick={() => doAssignDriver(null)}
                     disabled={driverLoading}
                     className="shrink-0 text-[11px] text-slate-500 hover:text-red-400 transition-colors disabled:opacity-40"
                     title="Remove driver"
@@ -612,7 +657,7 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, drivers,
                 drivers.filter((d) => d.is_available).map((driver) => (
                   <button
                     key={driver.id}
-                    onClick={() => handleAssignDriver(driver.id)}
+                    onClick={() => checkAndAssignDriver(driver.id)}
                     disabled={driverLoading}
                     className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-white/8 bg-white/[0.02] hover:border-emerald-500/30 hover:bg-emerald-500/5 text-left transition-all disabled:opacity-40 group"
                   >
@@ -1044,6 +1089,58 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, drivers,
         </div>
 
       </div>
+
+      {/* Driver conflict warning modal */}
+      {conflictWarning && (
+        <Modal
+          open={!!conflictWarning}
+          onClose={() => setConflictWarning(null)}
+          title="Driver Scheduling Conflict"
+          subtitle="This driver is already booked during an overlapping time window"
+          size="sm"
+        >
+          <div className="space-y-4">
+            <div className="flex items-start gap-3 bg-amber-500/10 border border-amber-500/20 rounded-xl px-3 py-3">
+              <span className="text-base leading-none mt-0.5">⚠️</span>
+              <p className="text-xs text-amber-300 leading-relaxed">
+                This driver has {conflictWarning.conflicts.length} overlapping booking{conflictWarning.conflicts.length > 1 ? 's' : ''} during this trip's time window. Assigning them may cause a scheduling conflict.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              {conflictWarning.conflicts.map((c) => (
+                <div key={c.reference_number} className="bg-white/[0.03] rounded-xl px-3 py-2.5 border border-white/8">
+                  <div className="flex items-center justify-between gap-2 mb-0.5">
+                    <span className="text-xs font-semibold text-slate-200">{c.reference_number}</span>
+                    <span className="text-[11px] text-slate-400">{c.guest_name}</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500">
+                    {formatDateTime(c.pickup_datetime)} → {c.dropoff_datetime ? formatDateTime(c.dropoff_datetime) : '~4 h'}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setConflictWarning(null)} className="btn-secondary">
+                Go Back
+              </button>
+              <button
+                onClick={async () => {
+                  const id = conflictWarning.driverId
+                  setConflictWarning(null)
+                  await doAssignDriver(id)
+                }}
+                disabled={driverLoading}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm border border-amber-500/30 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-all disabled:opacity-50"
+              >
+                {driverLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                Assign Anyway
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {/* Complete booking modal */}
       {showCompleteModal && (
