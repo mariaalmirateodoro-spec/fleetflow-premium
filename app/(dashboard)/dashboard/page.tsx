@@ -19,6 +19,8 @@ async function getDashboardData() {
     { data: upcoming },
     { data: recentBookings },
     { data: monthlyData },
+    { count: availableDriverCount },
+    { count: needsDriverCount },
   ] = await Promise.all([
     supabase.from('bookings').select('*', { count: 'exact' }).neq('status', 'cancelled'),
     supabase.from('bookings').select('id').eq('status', 'pending'),
@@ -39,6 +41,13 @@ async function getDashboardData() {
       .from('bookings')
       .select('final_cost_usd, budget_usd, created_at, status')
       .neq('status', 'cancelled'),
+    supabase.from('drivers').select('id', { count: 'exact' }).eq('is_available', true),
+    supabase
+      .from('bookings')
+      .select('id', { count: 'exact' })
+      .eq('driver_required', true)
+      .is('driver_id', null)
+      .in('status', ['pending', 'quoted', 'approved']),
   ])
 
   // Compute monthly spend
@@ -84,6 +93,8 @@ async function getDashboardData() {
     monthlySpendData,
     statusCounts,
     quotedCount: (bookings ?? []).filter((b) => b.status === 'quoted').length,
+    availableDriverCount: availableDriverCount ?? 0,
+    needsDriverCount: needsDriverCount ?? 0,
   }
 }
 

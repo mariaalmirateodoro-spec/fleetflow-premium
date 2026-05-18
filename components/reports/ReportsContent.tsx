@@ -13,6 +13,7 @@ interface Props {
   savingsData: { reference_number: string; budget: number; actual: number; savings: number }[]
   frequentRoutes: { route: string; count: number }[]
   statusData: { status: string; count: number }[]
+  driverStats: { name: string; trips: number; revenue: number }[]
   summary: { totalSpend: number; totalSavings: number; completedCount: number; cancelledCount: number; totalBookings: number }
 }
 
@@ -35,7 +36,7 @@ const tooltipStyle = {
   labelStyle: { color: '#94a3b8' },
 }
 
-export function ReportsContent({ monthlyData, topSuppliers, savingsData, frequentRoutes, statusData, summary }: Props) {
+export function ReportsContent({ monthlyData, topSuppliers, savingsData, frequentRoutes, statusData, driverStats, summary }: Props) {
   function exportCSV() {
     const today = new Date().toISOString().slice(0, 10)
     const CRLF = '\r\n'
@@ -77,6 +78,14 @@ export function ReportsContent({ monthlyData, topSuppliers, savingsData, frequen
     lines.push('COST SAVINGS BY BOOKING')
     lines.push(buildRow(['Reference', 'Budget (USD)', 'Actual Cost (USD)', 'Savings (USD)']))
     savingsData.forEach((r) => lines.push(buildRow([r.reference_number, r.budget, r.actual, r.savings])))
+    lines.push('')
+
+    // ── Driver utilization ────────────────────────────────────────
+    lines.push('DRIVER UTILIZATION')
+    lines.push(buildRow(['Driver', 'Trips', 'Revenue (USD)', 'Avg per Trip (USD)']))
+    driverStats.forEach((d) =>
+      lines.push(buildRow([d.name, d.trips, d.revenue, d.trips > 0 ? (d.revenue / d.trips).toFixed(2) : 0]))
+    )
 
     const bom = '﻿'
     const csv = bom + lines.join(CRLF)
@@ -238,6 +247,54 @@ export function ReportsContent({ monthlyData, topSuppliers, savingsData, frequen
           )}
         </div>
       </div>
+
+      {/* Driver utilization */}
+      {driverStats.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="card">
+            <h3 className="text-sm font-semibold text-white mb-4">Driver Trips</h3>
+            <div className="h-52">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={driverStats} layout="vertical" barSize={10}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" horizontal={false} />
+                  <XAxis type="number" tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} />
+                  <YAxis dataKey="name" type="category" tick={{ fill: '#94a3b8', fontSize: 10 }} width={110} axisLine={false} tickLine={false} />
+                  <Tooltip {...tooltipStyle} />
+                  <Bar dataKey="trips" fill="#06b6d4" radius={[0,4,4,0]} name="Trips" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          <div className="card p-0 overflow-hidden">
+            <div className="px-5 py-3 border-b border-white/8">
+              <h3 className="text-sm font-semibold text-white">Driver Performance</h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-white/5 text-xs text-slate-500 uppercase tracking-wider">
+                    <th className="px-4 py-3 text-left font-medium">Driver</th>
+                    <th className="px-4 py-3 text-left font-medium">Trips</th>
+                    <th className="px-4 py-3 text-left font-medium">Revenue</th>
+                    <th className="px-4 py-3 text-left font-medium">Avg/Trip</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {driverStats.map((d) => (
+                    <tr key={d.name} className="table-row-hover">
+                      <td className="px-4 py-2.5 text-xs font-medium text-slate-200">{d.name}</td>
+                      <td className="px-4 py-2.5 text-xs text-slate-400">{d.trips}</td>
+                      <td className="px-4 py-2.5 text-xs text-white font-semibold">{formatCurrency(d.revenue)}</td>
+                      <td className="px-4 py-2.5 text-xs text-slate-400">{formatCurrency(d.trips > 0 ? d.revenue / d.trips : 0)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Supplier revenue table */}
       {topSuppliers.length > 0 && (

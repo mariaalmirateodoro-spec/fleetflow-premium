@@ -14,14 +14,16 @@ export default async function ReportsPage() {
 
   const supabase = createClient()
 
-  const [{ data: bookings }, { data: suppliers }] = await Promise.all([
+  const [{ data: bookings }, { data: suppliers }, { data: drivers }] = await Promise.all([
     supabase.from('bookings').select('*').order('created_at', { ascending: true }),
     supabase.from('suppliers').select('*'),
+    supabase.from('drivers').select('id, full_name'),
   ])
 
   // Pre-compute report data server-side
   const allBookings = bookings ?? []
   const allSuppliers = suppliers ?? []
+  const allDrivers = drivers ?? []
 
   // Monthly bookings & spend (last 12 months)
   const monthlyMap: Record<string, { bookings: number; spend: number }> = {}
@@ -86,6 +88,23 @@ export default async function ReportsPage() {
     count: allBookings.filter((b) => b.status === s).length,
   }))
 
+  // Driver utilization
+  const driverMap: Record<string, { name: string; trips: number; revenue: number }> = {}
+  allBookings.forEach((b) => {
+    if (b.driver_id) {
+      const driver = allDrivers.find((d) => d.id === b.driver_id)
+      if (!driverMap[b.driver_id]) {
+        driverMap[b.driver_id] = { name: driver?.full_name ?? 'Unknown', trips: 0, revenue: 0 }
+      }
+      driverMap[b.driver_id].trips++
+      driverMap[b.driver_id].revenue += b.final_cost_usd ?? b.budget_usd ?? 0
+    }
+  })
+  const driverStats = Object.values(driverMap)
+    .sort((a, b) => b.trips - a.trips)
+    .slice(0, 10)
+    .map((d) => ({ ...d, revenue: Math.round(d.revenue) }))
+
   const totalSpend = allBookings.reduce((s, b) => s + (b.final_cost_usd ?? b.budget_usd ?? 0), 0)
   const totalSavings = savingsData.reduce((s, d) => s + d.savings, 0)
   const completedCount = allBookings.filter((b) => b.status === 'completed').length
@@ -101,6 +120,7 @@ export default async function ReportsPage() {
           savingsData={savingsData}
           frequentRoutes={frequentRoutes}
           statusData={statusData}
+          driverStats={driverStats}
           summary={{ totalSpend: Math.round(totalSpend), totalSavings: Math.round(totalSavings), completedCount, cancelledCount, totalBookings: allBookings.length }}
         />
       </div>

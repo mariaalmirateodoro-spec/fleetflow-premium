@@ -291,8 +291,30 @@ export function DriversClient({ initialDrivers, suppliers, profile }: Props) {
   const [confirmDelete, setConfirmDelete] = useState<Driver | null>(null)
   const [search, setSearch] = useState('')
   const [availableOnly, setAvailableOnly] = useState(false)
+  const [upcomingCounts, setUpcomingCounts] = useState<Record<string, number>>({})
 
   const canManage = ['admin', 'staff', 'manager'].includes(profile.role)
+
+  // Fetch upcoming trip counts for all drivers whenever the driver list changes
+  useEffect(() => {
+    const ids = drivers.map((d) => d.id)
+    if (ids.length === 0) return
+    const supabase = createClient()
+    supabase
+      .from('bookings')
+      .select('driver_id')
+      .in('driver_id', ids)
+      .in('status', ['pending', 'quoted', 'approved'])
+      .gte('pickup_datetime', new Date().toISOString())
+      .then(({ data }) => {
+        const counts: Record<string, number> = {}
+        ids.forEach((id) => (counts[id] = 0))
+        ;(data ?? []).forEach((b) => {
+          if (b.driver_id) counts[b.driver_id] = (counts[b.driver_id] ?? 0) + 1
+        })
+        setUpcomingCounts(counts)
+      })
+  }, [drivers])
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase()
@@ -427,6 +449,7 @@ export function DriversClient({ initialDrivers, suppliers, profile }: Props) {
                   <th className="px-4 py-3 text-left font-medium">License</th>
                   <th className="px-4 py-3 text-left font-medium">Vehicles</th>
                   <th className="px-4 py-3 text-left font-medium">Supplier</th>
+                  <th className="px-4 py-3 text-left font-medium">Upcoming</th>
                   <th className="px-4 py-3 text-left font-medium">Status</th>
                   {canManage && <th className="px-4 py-3 text-right font-medium">Actions</th>}
                 </tr>
@@ -490,6 +513,17 @@ export function DriversClient({ initialDrivers, suppliers, profile }: Props) {
                       {/* Supplier */}
                       <td className="px-4 py-3 text-xs text-slate-400">
                         {(d.suppliers as any)?.company_name ?? '—'}
+                      </td>
+
+                      {/* Upcoming trips */}
+                      <td className="px-4 py-3">
+                        {(upcomingCounts[d.id] ?? 0) > 0 ? (
+                          <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-fleet-500/20 text-fleet-300 text-[10px] font-bold border border-fleet-500/30">
+                            {upcomingCounts[d.id]}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-slate-600">—</span>
+                        )}
                       </td>
 
                       {/* Status */}

@@ -21,6 +21,8 @@ interface Props {
     monthlySpendData: { month: string; amount: number }[]
     statusCounts: Record<string, number>
     quotedCount: number
+    availableDriverCount: number
+    needsDriverCount: number
   }
   profile: Profile
 }
@@ -109,6 +111,38 @@ export function DashboardContent({ data, profile }: Props) {
             <p className="text-xs text-slate-400 mt-1">{stat.label}</p>
           </div>
         ))}
+      </div>
+
+      {/* Driver Overview */}
+      <div className="grid grid-cols-2 gap-4">
+        <div className="stat-card bg-gradient-to-br from-cyan-500/20 to-cyan-500/5 border border-cyan-500/20 animate-slide-up">
+          <div className="flex items-start justify-between mb-3">
+            <span className="text-2xl">🚗</span>
+            <span className="flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-lg text-cyan-400 bg-cyan-400/10">
+              Drivers
+            </span>
+          </div>
+          <p className="text-2xl font-display font-bold text-white">{data.availableDriverCount}</p>
+          <p className="text-xs text-slate-400 mt-1">Available Drivers</p>
+        </div>
+        <div className={`stat-card bg-gradient-to-br border animate-slide-up ${
+          data.needsDriverCount > 0
+            ? 'from-orange-500/20 to-orange-500/5 border-orange-500/20'
+            : 'from-emerald-500/20 to-emerald-500/5 border-emerald-500/20'
+        }`}>
+          <div className="flex items-start justify-between mb-3">
+            <span className="text-2xl">⚠️</span>
+            <span className={`flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-lg ${
+              data.needsDriverCount > 0
+                ? 'text-orange-400 bg-orange-400/10'
+                : 'text-emerald-400 bg-emerald-400/10'
+            }`}>
+              {data.needsDriverCount > 0 ? 'Action needed' : 'All covered'}
+            </span>
+          </div>
+          <p className="text-2xl font-display font-bold text-white">{data.needsDriverCount}</p>
+          <p className="text-xs text-slate-400 mt-1">Bookings Need Driver</p>
+        </div>
       </div>
 
       {/* Charts row */}
