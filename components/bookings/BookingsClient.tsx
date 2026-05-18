@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useMemo } from 'react'
-import { Plus, Search, Filter, Download, RefreshCw, Trash2, XCircle, Loader2 } from 'lucide-react'
+import { useState, useMemo, useEffect } from 'react'
+import { Plus, Search, Filter, Download, RefreshCw, Trash2, XCircle, Loader2, ChevronLeft, ChevronRight } from 'lucide-react'
 import { cn, formatDateTime, formatCurrency, vehicleLabels } from '@/lib/utils'
 import { StatusBadge } from '@/components/ui/Badge'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -21,6 +21,7 @@ interface Props {
 
 const STATUSES: BookingStatus[] = ['pending', 'quoted', 'approved', 'completed', 'cancelled']
 const VEHICLES: VehicleType[] = ['sedan', 'suv', 'van', 'minibus', 'luxury', 'pickup']
+const PAGE_SIZE = 25
 
 export function BookingsClient({ initialBookings, suppliers, profile }: Props) {
   const { toast } = useToast()
@@ -38,6 +39,10 @@ export function BookingsClient({ initialBookings, suppliers, profile }: Props) {
   const [cancelModal, setCancelModal] = useState<{ bookingId: string; ref: string } | null>(null)
   const [cancelReason, setCancelReason] = useState('')
   const [cancelLoading, setCancelLoading] = useState(false)
+  const [currentPage, setCurrentPage] = useState(1)
+
+  // Reset to page 1 whenever any filter changes
+  useEffect(() => { setCurrentPage(1) }, [search, statusFilter, vehicleFilter, dateFrom, dateTo])
 
   const filtered = useMemo(() => {
     const fromMs = dateFrom ? new Date(dateFrom).getTime() : null
@@ -59,6 +64,9 @@ export function BookingsClient({ initialBookings, suppliers, profile }: Props) {
       return matchesSearch && matchesStatus && matchesVehicle && matchesFrom && matchesTo
     })
   }, [bookings, search, statusFilter, vehicleFilter, dateFrom, dateTo])
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const paginated = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
 
   async function refresh() {
     setLoading(true)
@@ -326,7 +334,7 @@ export function BookingsClient({ initialBookings, suppliers, profile }: Props) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
-                {filtered.map((booking) => {
+                {paginated.map((booking) => {
                   const profiles = booking.profiles as { full_name?: string } | undefined
                   return (
                     <tr
@@ -415,6 +423,53 @@ export function BookingsClient({ initialBookings, suppliers, profile }: Props) {
           </div>
         )}
       </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between mt-4 text-xs text-slate-500">
+          <span>
+            Showing {((currentPage - 1) * PAGE_SIZE) + 1}–{Math.min(currentPage * PAGE_SIZE, filtered.length)} of {filtered.length}
+          </span>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="p-1.5 rounded-lg hover:bg-white/8 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            {Array.from({ length: totalPages }, (_, i) => i + 1)
+              .filter((p) => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1)
+              .reduce<(number | '…')[]>((acc, p, idx, arr) => {
+                if (idx > 0 && typeof arr[idx - 1] === 'number' && (arr[idx - 1] as number) + 1 < p) acc.push('…')
+                acc.push(p)
+                return acc
+              }, [])
+              .map((item, idx) =>
+                item === '…' ? (
+                  <span key={`ellipsis-${idx}`} className="px-1">…</span>
+                ) : (
+                  <button
+                    key={item}
+                    onClick={() => setCurrentPage(item as number)}
+                    className={`w-7 h-7 rounded-lg text-xs font-medium transition-colors ${
+                      currentPage === item ? 'bg-fleet-600 text-white' : 'hover:bg-white/8 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    {item}
+                  </button>
+                )
+              )}
+            <button
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="p-1.5 rounded-lg hover:bg-white/8 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Modals */}
       {showModal && (
