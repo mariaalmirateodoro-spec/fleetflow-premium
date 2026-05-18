@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard, CalendarCheck, Building2, CheckSquare,
-  BarChart3, Settings, Users, LogOut, ChevronRight, Car,
+  BarChart3, Settings, Users, LogOut, ChevronRight, Car, UserCheck,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { roleConfig } from '@/lib/utils'
@@ -17,6 +17,7 @@ const navItems = [
   { href: '/dashboard',  label: 'Dashboard',  icon: LayoutDashboard, roles: ['admin','staff','manager','finance'] },
   { href: '/bookings',   label: 'Bookings',   icon: CalendarCheck,   roles: ['admin','staff','manager','finance'] },
   { href: '/suppliers',  label: 'Suppliers',  icon: Building2,       roles: ['admin','staff','manager','finance'] },
+  { href: '/drivers',    label: 'Drivers',    icon: UserCheck,       roles: ['admin','staff','manager'] },
   { href: '/approvals',  label: 'Approvals',  icon: CheckSquare,     roles: ['admin','manager'] },
   { href: '/reports',    label: 'Reports',    icon: BarChart3,        roles: ['admin','finance','manager'] },
   { href: '/users',      label: 'Users',      icon: Users,            roles: ['admin'] },

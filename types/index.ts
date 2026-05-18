@@ -162,6 +162,34 @@ export interface CreateSupplierInput {
   notes?: string
 }
 
+export interface Driver {
+  id: string
+  full_name: string
+  phone: string
+  license_number: string
+  license_expiry: string | null
+  vehicle_types: VehicleType[]
+  is_available: boolean
+  assigned_supplier_id: string | null
+  notes: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+  // Relations
+  suppliers?: Supplier
+}
+
+export interface CreateDriverInput {
+  full_name: string
+  phone: string
+  license_number: string
+  license_expiry?: string
+  vehicle_types: VehicleType[]
+  is_available?: boolean
+  assigned_supplier_id?: string
+  notes?: string
+}
+
 export interface CreateQuoteInput {
   booking_id: string
   supplier_id: string
