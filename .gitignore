@@ -38,3 +38,23 @@ Thumbs.db
 # TypeScript
 *.tsbuildinfo
 next-env.d.ts
+
+# Local deployment scripts and temp files (may contain secrets)
+*.bat
+*.ps1
+*.txt
+check-v.txt
+commit-log.txt
+deploy-*.txt
+fix-deploy-out.txt
+gitout*.txt
+giterr*.txt
+login-output.txt
+npm-*.txt
+portal-deploy-out.txt
+push-email*.txt
+run-vercel.ps1
+do-commit.ps1
+deploy-autocomplete.ps1
+vercel-*.txt
+viber-deploy-out.txt

@@ -157,7 +157,7 @@ export default async function BookingStatusPage({
 
   const { data: booking, error } = await supabase
     .from('bookings')
-    .select('*, suppliers(company_name, contact_person, phone)')
+    .select('*, suppliers(company_name, contact_person, phone), drivers(full_name, phone)')
     .eq('reference_number', params.reference.toUpperCase())
     .single()
 
@@ -239,6 +239,33 @@ export default async function BookingStatusPage({
           ) : null
         })()}
 
+        {/* Driver card — show when approved/completed and a driver is assigned */}
+        {(booking.status === 'approved' || booking.status === 'completed') && booking.drivers && (() => {
+          const driver = booking.drivers as { full_name?: string; phone?: string }
+          return driver.full_name ? (
+            <div className="rounded-2xl border border-blue-500/20 bg-blue-500/5 p-5">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-blue-400 text-base">🧑‍✈️</span>
+                <h2 className="font-semibold text-blue-300 text-sm">Your Driver</h2>
+              </div>
+              <dl className="space-y-2">
+                <div className="flex justify-between">
+                  <dt className="text-slate-500 text-xs uppercase tracking-wider">Name</dt>
+                  <dd className="text-slate-200 text-sm font-medium">{driver.full_name}</dd>
+                </div>
+                {driver.phone && (
+                  <div className="flex justify-between">
+                    <dt className="text-slate-500 text-xs uppercase tracking-wider">Phone</dt>
+                    <dd className="text-slate-200 text-sm">
+                      <a href={`tel:${driver.phone}`} className="text-blue-400 hover:underline">{driver.phone}</a>
+                    </dd>
+                  </div>
+                )}
+              </dl>
+            </div>
+          ) : null
+        })()}
+
         {/* Trip details */}
         <div className="rounded-2xl border border-white/8 bg-white/3 p-6">
           <h2 className="font-semibold text-white text-sm mb-4">Trip details</h2>
@@ -247,6 +274,7 @@ export default async function BookingStatusPage({
               { label: 'Guest name', value: booking.guest_name },
               { label: 'Passengers', value: `${booking.guest_count} person${booking.guest_count !== 1 ? 's' : ''}` },
               { label: 'Vehicle', value: formatVehicle(booking.vehicle_type) },
+              { label: 'Driver', value: booking.driver_required ? 'Yes — included' : 'Self-drive' },
               { label: 'Pickup', value: formatDate(booking.pickup_datetime) },
               { label: 'Drop-off', value: formatDate(booking.dropoff_datetime) },
               { label: 'From', value: booking.pickup_location },
