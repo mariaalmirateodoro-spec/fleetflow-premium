@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Bell, Search, X, Check } from 'lucide-react'
+import { Bell, X, Check } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { cn, timeAgo } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import type { Notification, Profile } from '@/types'
@@ -13,6 +14,7 @@ interface TopbarProps {
 }
 
 export function Topbar({ profile, title, subtitle }: TopbarProps) {
+  const router = useRouter()
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [showNotifs, setShowNotifs] = useState(false)
   const [unreadCount, setUnreadCount] = useState(0)
@@ -57,8 +59,23 @@ export function Topbar({ profile, title, subtitle }: TopbarProps) {
     loadNotifications()
   }
 
+  async function handleNotificationClick(n: Notification) {
+    // Mark as read
+    if (!n.is_read) {
+      const supabase = createClient()
+      await supabase.from('notifications').update({ is_read: true }).eq('id', n.id)
+      loadNotifications()
+    }
+    // Navigate to related booking if applicable
+    if (n.booking_id) {
+      setShowNotifs(false)
+      router.push('/bookings')
+    }
+  }
+
   const typeIcons: Record<string, string> = {
     new_request: '📋',
+    new_booking: '📋',
     approval_needed: '⏳',
     approved: '✅',
     payment_due: '💳',
@@ -111,22 +128,29 @@ export function Topbar({ profile, title, subtitle }: TopbarProps) {
                     <div className="py-8 text-center text-sm text-slate-500">No notifications</div>
                   ) : (
                     notifications.map((n) => (
-                      <div
+                      <button
                         key={n.id}
+                        onClick={() => handleNotificationClick(n)}
                         className={cn(
-                          'px-4 py-3 text-sm transition-colors',
-                          n.is_read ? 'opacity-60' : 'bg-fleet-500/5'
+                          'w-full text-left px-4 py-3 text-sm transition-colors hover:bg-white/5',
+                          n.is_read ? 'opacity-60' : 'bg-fleet-500/5',
+                          n.booking_id && 'cursor-pointer'
                         )}
                       >
                         <div className="flex gap-2">
                           <span className="text-base shrink-0">{typeIcons[n.type] ?? 'ℹ️'}</span>
-                          <div>
+                          <div className="min-w-0">
                             <p className="font-medium text-slate-200 text-xs">{n.title}</p>
-                            <p className="text-slate-400 text-xs mt-0.5">{n.message}</p>
-                            <p className="text-slate-600 text-[10px] mt-1">{timeAgo(n.created_at)}</p>
+                            <p className="text-slate-400 text-xs mt-0.5 leading-snug">{n.message}</p>
+                            <div className="flex items-center gap-2 mt-1">
+                              <p className="text-slate-600 text-[10px]">{timeAgo(n.created_at)}</p>
+                              {n.booking_id && !n.is_read && (
+                                <span className="text-[10px] text-fleet-400">View booking →</span>
+                              )}
+                            </div>
                           </div>
                         </div>
-                      </div>
+                      </button>
                     ))
                   )}
                 </div>
