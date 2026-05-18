@@ -1,5 +1,6 @@
 'use client'
 
+import { Download } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
@@ -17,12 +18,77 @@ interface Props {
 
 const COLORS = ['#6366f1', '#8b5cf6', '#a855f7', '#ec4899', '#f59e0b', '#10b981', '#3b82f6', '#ef4444']
 
+function esc(val: string | number | null | undefined): string {
+  const str = val == null ? '' : String(val)
+  if (str.includes('"') || str.includes(',') || str.includes('\n') || str.includes('\r')) {
+    return `"${str.replace(/"/g, '""')}"`
+  }
+  return str
+}
+
+function buildRow(cells: (string | number | null | undefined)[]): string {
+  return cells.map(esc).join(',')
+}
+
 const tooltipStyle = {
   contentStyle: { background: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, fontSize: 12 },
   labelStyle: { color: '#94a3b8' },
 }
 
 export function ReportsContent({ monthlyData, topSuppliers, savingsData, frequentRoutes, statusData, summary }: Props) {
+  function exportCSV() {
+    const today = new Date().toISOString().slice(0, 10)
+    const CRLF = '\r\n'
+    const lines: string[] = []
+
+    // ── Summary ──────────────────────────────────────────────
+    lines.push('SUMMARY')
+    lines.push(buildRow(['Total Spend (USD)', 'Total Savings (USD)', 'Completed Bookings', 'Cancelled Bookings', 'Total Bookings']))
+    lines.push(buildRow([summary.totalSpend, summary.totalSavings, summary.completedCount, summary.cancelledCount, summary.totalBookings]))
+    lines.push('')
+
+    // ── Monthly breakdown ─────────────────────────────────────
+    lines.push('MONTHLY BREAKDOWN')
+    lines.push(buildRow(['Month', 'Bookings', 'Spend (USD)']))
+    monthlyData.forEach((m) => lines.push(buildRow([m.month, m.bookings, m.spend])))
+    lines.push('')
+
+    // ── Booking status ────────────────────────────────────────
+    lines.push('BOOKING STATUS')
+    lines.push(buildRow(['Status', 'Count']))
+    statusData.forEach((s) => lines.push(buildRow([s.status, s.count])))
+    lines.push('')
+
+    // ── Supplier performance ──────────────────────────────────
+    lines.push('SUPPLIER PERFORMANCE')
+    lines.push(buildRow(['Supplier', 'Bookings', 'Revenue (USD)', 'Avg per Booking (USD)', 'Rating']))
+    topSuppliers.forEach((s) =>
+      lines.push(buildRow([s.name, s.bookings, s.revenue, s.bookings > 0 ? (s.revenue / s.bookings).toFixed(2) : 0, s.rating.toFixed(1)]))
+    )
+    lines.push('')
+
+    // ── Top routes ────────────────────────────────────────────
+    lines.push('TOP ROUTES')
+    lines.push(buildRow(['Rank', 'Route', 'Booking Count']))
+    frequentRoutes.forEach((r, i) => lines.push(buildRow([i + 1, r.route, r.count])))
+    lines.push('')
+
+    // ── Cost savings ──────────────────────────────────────────
+    lines.push('COST SAVINGS BY BOOKING')
+    lines.push(buildRow(['Reference', 'Budget (USD)', 'Actual Cost (USD)', 'Savings (USD)']))
+    savingsData.forEach((r) => lines.push(buildRow([r.reference_number, r.budget, r.actual, r.savings])))
+
+    const bom = '﻿'
+    const csv = bom + lines.join(CRLF)
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `report-${today}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   const summaryCards = [
     { label: 'Total Spend', value: formatCurrency(summary.totalSpend), icon: '💰', color: 'from-fleet-600/20' },
     { label: 'Cost Savings', value: formatCurrency(summary.totalSavings), icon: '📉', color: 'from-emerald-500/20' },
@@ -32,6 +98,15 @@ export function ReportsContent({ monthlyData, topSuppliers, savingsData, frequen
 
   return (
     <div className="space-y-6 animate-fade-in">
+      {/* Header row */}
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-slate-500">All figures in USD unless noted.</p>
+        <button onClick={exportCSV} className="btn-secondary flex items-center gap-2 text-xs">
+          <Download className="w-3.5 h-3.5" />
+          Export CSV
+        </button>
+      </div>
+
       {/* Summary cards */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 stagger">
         {summaryCards.map((c) => (
