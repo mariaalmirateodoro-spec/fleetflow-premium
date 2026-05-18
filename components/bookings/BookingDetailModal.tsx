@@ -1,30 +1,35 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Edit2, Mail, Plus, Star, Loader2, Sparkles, Check, Copy, Send, XCircle, CheckCircle2, PencilLine } from 'lucide-react'
+import { Edit2, Mail, Plus, Star, Loader2, Sparkles, Check, Copy, Send, XCircle, CheckCircle2, PencilLine, UserCheck, UserX } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { StatusBadge, Badge } from '@/components/ui/Badge'
 import { formatDateTime, formatCurrency, vehicleLabels } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/components/ui/Toast'
-import type { Booking, Profile, Quote, Supplier } from '@/types'
+import type { Booking, Driver, Profile, Quote, Supplier } from '@/types'
 
 interface Props {
   open: boolean
   onClose: () => void
   booking: Booking
   suppliers: Supplier[]
+  drivers: Driver[]
   profile: Profile
   onEdit: () => void
   onRefresh: () => void
 }
 
-export function BookingDetailModal({ open, onClose, booking, suppliers, profile, onEdit, onRefresh }: Props) {
+export function BookingDetailModal({ open, onClose, booking, suppliers, drivers, profile, onEdit, onRefresh }: Props) {
   const { toast } = useToast()
   const [quotes, setQuotes] = useState<Quote[]>([])
   const [showAddQuote, setShowAddQuote] = useState(false)
   const [aiLoading, setAiLoading] = useState(false)
   const [addingQuote, setAddingQuote] = useState(false)
+
+  // Driver assignment state
+  const [assignedDriverId, setAssignedDriverId] = useState<string | null>(booking.driver_id ?? null)
+  const [driverLoading, setDriverLoading] = useState(false)
 
   // Cancellation state
   const [showCancelModal, setShowCancelModal] = useState(false)
@@ -67,6 +72,11 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
     if (open) loadQuotes()
   }, [open, booking.id])
 
+  // Sync assigned driver when booking prop changes
+  useEffect(() => {
+    setAssignedDriverId(booking.driver_id ?? null)
+  }, [booking.driver_id])
+
   // Reset drafts when supplier changes
   useEffect(() => {
     setEmailDraft('')
@@ -82,6 +92,23 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
       .order('total_amount', { ascending: true })
     if (error) console.error('[loadQuotes]', error)
     if (data) setQuotes(data)
+  }
+
+  async function handleAssignDriver(driverId: string | null) {
+    setDriverLoading(true)
+    const supabase = createClient()
+    const { error } = await supabase
+      .from('bookings')
+      .update({ driver_id: driverId })
+      .eq('id', booking.id)
+    if (error) {
+      toast(`Failed to update driver: ${error.message}`, 'error')
+    } else {
+      setAssignedDriverId(driverId)
+      toast(driverId ? 'Driver assigned!' : 'Driver removed', 'success')
+      onRefresh()
+    }
+    setDriverLoading(false)
   }
 
   async function handleSelectQuote(quoteId: string) {
@@ -403,6 +430,10 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
     booking.status === 'approved'
   const canEditCost = ['admin', 'manager', 'staff'].includes(profile.role) &&
     (booking.status === 'approved' || booking.status === 'completed')
+  const canAssignDriver = ['admin', 'manager', 'staff'].includes(profile.role) &&
+    booking.driver_required &&
+    booking.status !== 'cancelled' && booking.status !== 'completed'
+  const assignedDriver = drivers.find((d) => d.id === assignedDriverId) ?? null
   const selectedSupplier = suppliers.find((s) => s.id === selectedSupplierId)
   const currentDraft = contactTab === 'email' ? emailDraft : viberDraft
 
@@ -447,7 +478,6 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
             ['Nationality', booking.guest_nationality],
             ['Guest Count', `${booking.guest_count} pax`],
             ['Vehicle', vehicleLabels[booking.vehicle_type]],
-            ['Driver', booking.driver_required ? '✅ Required' : '❌ Not needed'],
             ['Budget', formatCurrency(booking.budget_usd)],
             ['Pickup', formatDateTime(booking.pickup_datetime)],
             ['Dropoff', booking.dropoff_datetime ? formatDateTime(booking.dropoff_datetime) : '—'],
@@ -459,6 +489,39 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
               <p className="text-xs text-slate-200 font-medium">{value}</p>
             </div>
           ))}
+
+          {/* Driver cell — spans full width to show assignment info */}
+          <div className="col-span-2 bg-white/[0.03] rounded-xl px-3 py-2.5">
+            <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Driver</p>
+            {!booking.driver_required ? (
+              <p className="text-xs text-slate-500">Not required for this booking</p>
+            ) : assignedDriver ? (
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <UserCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <div>
+                    <p className="text-xs text-slate-200 font-medium">{assignedDriver.full_name}</p>
+                    <p className="text-[11px] text-slate-500">{assignedDriver.phone} · {assignedDriver.license_number}</p>
+                  </div>
+                </div>
+                {canAssignDriver && (
+                  <button
+                    onClick={() => handleAssignDriver(null)}
+                    disabled={driverLoading}
+                    className="shrink-0 text-[11px] text-slate-500 hover:text-red-400 transition-colors disabled:opacity-40"
+                    title="Remove driver"
+                  >
+                    {driverLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UserX className="w-3.5 h-3.5" />}
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <UserX className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <p className="text-xs text-amber-300">Required — no driver assigned yet</p>
+              </div>
+            )}
+          </div>
 
           {/* Final Cost — editable for approved/completed bookings */}
           <div className="bg-white/[0.03] rounded-xl px-3 py-2.5">
@@ -529,6 +592,47 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, profile,
                 <p className="text-xs text-slate-300">{booking.special_requests}</p>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Driver picker — shown when driver is required and user can assign */}
+        {canAssignDriver && !assignedDriver && (
+          <div className="border border-amber-500/20 bg-amber-500/5 rounded-2xl overflow-hidden">
+            <div className="px-4 py-3 border-b border-amber-500/15 flex items-center gap-2">
+              <UserCheck className="w-4 h-4 text-amber-400" />
+              <div>
+                <h4 className="text-sm font-semibold text-amber-300">Assign Driver</h4>
+                <p className="text-[11px] text-amber-400/70 mt-0.5">This booking requires a driver — select one from available drivers</p>
+              </div>
+            </div>
+            <div className="p-3 space-y-1.5 max-h-52 overflow-y-auto">
+              {drivers.filter((d) => d.is_available).length === 0 ? (
+                <p className="text-xs text-slate-500 text-center py-3">No available drivers. Mark a driver as available in the Drivers module first.</p>
+              ) : (
+                drivers.filter((d) => d.is_available).map((driver) => (
+                  <button
+                    key={driver.id}
+                    onClick={() => handleAssignDriver(driver.id)}
+                    disabled={driverLoading}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-white/8 bg-white/[0.02] hover:border-emerald-500/30 hover:bg-emerald-500/5 text-left transition-all disabled:opacity-40 group"
+                  >
+                    <div className="w-7 h-7 rounded-full bg-emerald-500/15 border border-emerald-500/20 flex items-center justify-center shrink-0">
+                      <span className="text-[11px] font-bold text-emerald-400">
+                        {driver.full_name.split(' ').map((n) => n[0]).slice(0, 2).join('')}
+                      </span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-slate-200 group-hover:text-white transition-colors">{driver.full_name}</p>
+                      <p className="text-[11px] text-slate-500 truncate">{driver.phone} · {driver.license_number}</p>
+                    </div>
+                    {driverLoading
+                      ? <Loader2 className="w-3.5 h-3.5 text-slate-500 animate-spin shrink-0" />
+                      : <Check className="w-3.5 h-3.5 text-emerald-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                    }
+                  </button>
+                ))
+              )}
+            </div>
           </div>
         )}
 

@@ -11,11 +11,12 @@ import { BookingDetailModal } from '@/components/bookings/BookingDetailModal'
 import { Modal } from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
 import { createClient } from '@/lib/supabase/client'
-import type { Booking, BookingStatus, Profile, Supplier, VehicleType } from '@/types'
+import type { Booking, BookingStatus, Driver, Profile, Supplier, VehicleType } from '@/types'
 
 interface Props {
   initialBookings: Booking[]
   suppliers: Supplier[]
+  drivers: Driver[]
   profile: Profile
 }
 
@@ -23,7 +24,7 @@ const STATUSES: BookingStatus[] = ['pending', 'quoted', 'approved', 'completed',
 const VEHICLES: VehicleType[] = ['sedan', 'suv', 'van', 'minibus', 'luxury', 'pickup']
 const PAGE_SIZE = 25
 
-export function BookingsClient({ initialBookings, suppliers, profile }: Props) {
+export function BookingsClient({ initialBookings, suppliers, drivers, profile }: Props) {
   const { toast } = useToast()
   const [bookings, setBookings] = useState<Booking[]>(initialBookings)
   const [loading, setLoading] = useState(false)
@@ -73,7 +74,7 @@ export function BookingsClient({ initialBookings, suppliers, profile }: Props) {
     const supabase = createClient()
     const { data } = await supabase
       .from('bookings')
-      .select('*, profiles!bookings_created_by_fkey(full_name,email), suppliers(company_name)')
+      .select('*, profiles!bookings_created_by_fkey(full_name,email), suppliers(company_name), drivers(id,full_name,phone,license_number)')
       .order('created_at', { ascending: false })
     if (data) setBookings(data)
     setLoading(false)
@@ -357,7 +358,11 @@ export function BookingsClient({ initialBookings, suppliers, profile }: Props) {
                       </td>
                       <td className="px-4 py-3.5 hidden lg:table-cell">
                         <span className="text-xs text-slate-400">{vehicleLabels[booking.vehicle_type]}</span>
-                        {booking.driver_required && <span className="ml-1 text-[10px] text-amber-400">+ driver</span>}
+                        {booking.driver_required && (
+                          booking.drivers
+                            ? <span className="ml-1 text-[10px] text-emerald-400">🧑‍✈️ {(booking.drivers as { full_name?: string }).full_name}</span>
+                            : <span className="ml-1 text-[10px] text-amber-400">+ driver needed</span>
+                        )}
                       </td>
                       <td className="px-4 py-3.5 hidden xl:table-cell text-xs text-slate-400">
                         {formatDateTime(booking.pickup_datetime)}
@@ -489,6 +494,7 @@ export function BookingsClient({ initialBookings, suppliers, profile }: Props) {
           onClose={() => { setShowDetail(false); setSelectedBooking(null) }}
           booking={selectedBooking}
           suppliers={suppliers}
+          drivers={drivers}
           profile={profile}
           onEdit={() => handleEdit(selectedBooking)}
           onRefresh={refresh}

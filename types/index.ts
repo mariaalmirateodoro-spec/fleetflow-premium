@@ -69,6 +69,7 @@ export interface Booking {
   dropoff_location: string
   vehicle_type: VehicleType
   driver_required: boolean
+  driver_id: string | null
   budget_usd: number | null
   final_cost_usd: number | null
   status: BookingStatus
@@ -86,6 +87,7 @@ export interface Booking {
   // Relations
   profiles?: Profile
   suppliers?: Supplier
+  drivers?: Pick<Driver, 'id' | 'full_name' | 'phone' | 'license_number'>
 }
 
 export interface Quote {
