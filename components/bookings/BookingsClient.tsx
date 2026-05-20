@@ -77,7 +77,7 @@ export function BookingsClient({ initialBookings, suppliers, drivers, profile }:
     const supabase = createClient()
     const { data } = await supabase
       .from('bookings')
-      .select('*, profiles!bookings_created_by_fkey(full_name,email), suppliers(company_name), drivers(id,full_name,phone,license_number)')
+      .select('*, profiles!bookings_created_by_fkey(full_name), suppliers(company_name), drivers(id,full_name,phone,license_number)')
       .order('created_at', { ascending: false })
     if (data) setBookings(data)
     setLoading(false)

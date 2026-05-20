@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
 
     let query = supabase
       .from('bookings')
-      .select('*, profiles!bookings_created_by_fkey(full_name, email), suppliers(company_name)', { count: 'exact' })
+      .select('*, profiles!bookings_created_by_fkey(full_name), suppliers(company_name)', { count: 'exact' })
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1)
 

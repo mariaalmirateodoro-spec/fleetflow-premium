@@ -8,7 +8,7 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
 
   const { data, error } = await supabase
     .from('bookings')
-    .select('*, profiles!bookings_created_by_fkey(full_name,email), suppliers(*), quotes(*, suppliers(*))')
+    .select('*, profiles!bookings_created_by_fkey(full_name), suppliers(*), quotes(*, suppliers(*))')
     .eq('id', params.id)
     .single()
 

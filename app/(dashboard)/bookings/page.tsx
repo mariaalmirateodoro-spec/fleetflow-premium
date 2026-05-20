@@ -16,7 +16,7 @@ export default async function BookingsPage() {
   const [{ data: bookings }, { data: suppliers }, { data: drivers }] = await Promise.all([
     supabase
       .from('bookings')
-      .select('*, profiles!bookings_created_by_fkey(full_name,email), suppliers(company_name), drivers(id,full_name,phone,license_number)')
+      .select('*, profiles!bookings_created_by_fkey(full_name), suppliers(company_name), drivers(id,full_name,phone,license_number)')
       .order('created_at', { ascending: false }),
     supabase.from('suppliers').select('*').eq('is_available', true).order('company_name'),
     supabase.from('drivers').select('id,full_name,phone,license_number,vehicle_types,is_available,assigned_supplier_id').order('full_name'),

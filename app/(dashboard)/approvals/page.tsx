@@ -15,7 +15,7 @@ export default async function ApprovalsPage() {
   const supabase = createClient()
   const { data: bookings } = await supabase
     .from('bookings')
-    .select('*, profiles!bookings_created_by_fkey(full_name,email), suppliers(company_name), quotes(*, suppliers(company_name,rating))')
+    .select('*, profiles!bookings_created_by_fkey(full_name), suppliers(company_name), quotes(*, suppliers(company_name,rating))')
     .in('status', ['quoted', 'pending'])
     .order('created_at', { ascending: true })
 

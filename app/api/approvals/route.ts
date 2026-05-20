@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
   const bookingId = request.nextUrl.searchParams.get('booking_id')
   let query = supabase
     .from('approvals')
-    .select('*, profiles!approvals_approved_by_fkey(full_name, email)')
+    .select('*, profiles!approvals_approved_by_fkey(full_name)')
     .order('created_at', { ascending: false })
 
   if (bookingId) query = query.eq('booking_id', bookingId)
