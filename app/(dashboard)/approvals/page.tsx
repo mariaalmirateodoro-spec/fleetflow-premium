@@ -21,7 +21,7 @@ export default async function ApprovalsPage() {
 
   const { data: recentApprovals } = await supabase
     .from('approvals')
-    .select('*, profiles!approvals_reviewer_id_fkey(full_name), bookings(reference_number, guest_name)')
+    .select('*, profiles!approvals_approved_by_fkey(full_name), bookings(reference_number, guest_name)')
     .order('created_at', { ascending: false })
     .limit(10)
 
