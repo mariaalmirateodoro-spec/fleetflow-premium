@@ -244,7 +244,7 @@ Email: operations@fleetflow.com`
 }
 
 // ─── Guest Viber notification ────────────────────────────────
-export function generateGuestViberMessage(booking: Booking, selectedQuote?: Quote | null): string {
+export function generateGuestViberMessage(booking: Booking, selectedQuote?: Quote | null, trackingUrl?: string): string {
   const fmt = (dt: string) => new Date(dt).toLocaleDateString('en-PH', {
     weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
   })
@@ -284,6 +284,8 @@ export function generateGuestViberMessage(booking: Booking, selectedQuote?: Quot
 📅 Date: ${fmt(booking.pickup_datetime)} at ${fmtTime(booking.pickup_datetime)}`
   }
 
+  const trackingLine = trackingUrl ? `\n🔍 Track your booking: ${trackingUrl}` : ''
+
   if (selectedQuote) {
     return `Hi ${booking.guest_name}! 👋
 
@@ -292,7 +294,7 @@ Great news — your transport booking is confirmed! ✅
 📋 Ref: ${booking.reference_number}
 🚗 Vehicle: ${vehicleLabel}
 👥 Passengers: ${booking.guest_count} pax
-${tripDetails}${selectedQuote.total_amount ? `\n💰 Total: PHP ${selectedQuote.total_amount.toLocaleString()}` : ''}${booking.special_requests ? `\n📝 Notes: ${booking.special_requests}` : ''}
+${tripDetails}${selectedQuote.total_amount ? `\n💰 Total: PHP ${selectedQuote.total_amount.toLocaleString()}` : ''}${booking.special_requests ? `\n📝 Notes: ${booking.special_requests}` : ''}${trackingLine}
 
 Please be at the pick-up point at least 5 minutes early. Your driver will be waiting. 🙏
 
@@ -306,7 +308,7 @@ Thank you for choosing FleetFlow Premium. We\'ve received your transport booking
 📋 Ref: ${booking.reference_number}
 🚗 Vehicle: ${vehicleLabel}
 👥 Passengers: ${booking.guest_count} pax
-${tripDetails}${booking.special_requests ? `\n📝 Notes: ${booking.special_requests}` : ''}
+${tripDetails}${booking.special_requests ? `\n📝 Notes: ${booking.special_requests}` : ''}${trackingLine}
 
 We\'ll send you a confirmation with full details shortly. For questions, feel free to reply here. 🙏
 

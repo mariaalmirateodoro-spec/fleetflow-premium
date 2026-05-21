@@ -51,13 +51,15 @@ export async function POST(request: NextRequest) {
 
       case 'guest_viber_message': {
         const { booking, selectedQuote } = body
-        const message = generateGuestViberMessage(booking, selectedQuote ?? null)
+        const trackingUrl = `${request.nextUrl.origin}/book/status/${booking.reference_number}`
+        const message = generateGuestViberMessage(booking, selectedQuote ?? null, trackingUrl)
         return NextResponse.json({ message })
       }
 
       case 'guest_line_message': {
         const { booking, selectedQuote } = body
-        const message = generateGuestViberMessage(booking, selectedQuote ?? null)
+        const trackingUrl = `${request.nextUrl.origin}/book/status/${booking.reference_number}`
+        const message = generateGuestViberMessage(booking, selectedQuote ?? null, trackingUrl)
         return NextResponse.json({ message })
       }
 
