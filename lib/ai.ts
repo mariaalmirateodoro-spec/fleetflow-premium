@@ -294,7 +294,7 @@ Great news — your transport booking is confirmed! ✅
 📋 Ref: ${booking.reference_number}
 🚗 Vehicle: ${vehicleLabel}
 👥 Passengers: ${booking.guest_count} pax
-${tripDetails}${selectedQuote.total_amount ? `\n💰 Total: PHP ${selectedQuote.total_amount.toLocaleString()}` : ''}${booking.special_requests ? `\n📝 Notes: ${booking.special_requests}` : ''}${trackingLine}
+${tripDetails}${selectedQuote.total_amount ? `\n💰 Total: PHP ${selectedQuote.total_amount.toLocaleString()}` : ''}${booking.special_requests ? `\n📝 Special Requests: ${booking.special_requests}` : ''}${trackingLine}
 
 Please be at the pick-up point at least 5 minutes early. Your driver will be waiting. 🙏
 
@@ -308,7 +308,7 @@ Thank you for choosing FleetFlow Premium. We\'ve received your transport booking
 📋 Ref: ${booking.reference_number}
 🚗 Vehicle: ${vehicleLabel}
 👥 Passengers: ${booking.guest_count} pax
-${tripDetails}${booking.special_requests ? `\n📝 Notes: ${booking.special_requests}` : ''}${trackingLine}
+${tripDetails}${booking.special_requests ? `\n📝 Special Requests: ${booking.special_requests}` : ''}${trackingLine}
 
 We\'ll send you a confirmation with full details shortly. For questions, feel free to reply here. 🙏
 
