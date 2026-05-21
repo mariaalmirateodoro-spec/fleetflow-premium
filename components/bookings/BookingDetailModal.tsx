@@ -354,26 +354,13 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, drivers,
   }
 
   function openGuestLine() {
-    const lineContact = booking.guest_line_id || booking.guest_phone
-    if (!lineContact) return
-    if (guestLineDraft) {
-      navigator.clipboard.writeText(guestLineDraft).catch(() => {})
-      toast('Message copied — open LINE and paste to send', 'info')
-    }
-    // If it looks like a phone number, normalize it; otherwise treat as LINE username
-    const cleaned = lineContact.replace(/[\s\-\(\)]/g, '')
-    const isPhone = /^[+\d]/.test(cleaned)
-    let lineIdentifier: string
-    if (isPhone) {
-      lineIdentifier = cleaned.startsWith('+') ? cleaned : `+63${cleaned.replace(/^0/, '')}`
-    } else {
-      lineIdentifier = lineContact.trim()
-    }
-    const a = document.createElement('a')
-    a.href = `line://ti/p/~${encodeURIComponent(lineIdentifier)}`
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
+    if (!guestLineDraft) return
+    // Open LINE with the message pre-filled — user just picks the contact and taps Send
+    const encoded = encodeURIComponent(guestLineDraft)
+    window.open(`line://msg/text/${encoded}`, '_blank')
+    // Copy as fallback for desktop where the URL scheme may not launch LINE
+    navigator.clipboard.writeText(guestLineDraft).catch(() => {})
+    toast('LINE opened — select the guest contact and tap Send', 'success')
   }
   function sendGuestEmail() {
     if (!booking.guest_email || !guestEmailDraft) return
@@ -933,7 +920,7 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, drivers,
                         </button>
                       </div>
                       <p className="text-[11px] text-slate-500 text-center">
-                        Message is copied to clipboard — paste it in LINE to send.
+                        Opens LINE with the message pre-filled — just select the guest and tap Send.
                       </p>
                     </>
                   ) : (
