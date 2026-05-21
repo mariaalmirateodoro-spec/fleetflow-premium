@@ -47,6 +47,14 @@ export async function POST(
     return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
   }
 
+  // Guard: cannot act on a terminal-status booking
+  if (booking.status === 'cancelled') {
+    return NextResponse.json({ error: 'This booking has already been cancelled and cannot be modified.' }, { status: 400 })
+  }
+  if (booking.status === 'completed') {
+    return NextResponse.json({ error: 'Completed bookings cannot be modified.' }, { status: 400 })
+  }
+
   // Map action → new status
   const newStatus =
     action === 'approved' ? 'approved' :

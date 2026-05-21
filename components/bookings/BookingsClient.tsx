@@ -114,8 +114,15 @@ export function BookingsClient({ initialBookings, suppliers, drivers, profile }:
         throw new Error(err.error ?? 'Request failed')
       }
       toast('Booking cancelled', 'success')
+      // Optimistically mark as cancelled in local state so it doesn't reappear
+      setBookings((prev) =>
+        prev.map((b) =>
+          b.id === cancelModal.bookingId
+            ? { ...b, status: 'cancelled' as BookingStatus, cancellation_reason: cancelReason.trim() }
+            : b
+        )
+      )
       setCancelModal(null)
-      await refresh()
     } catch (err) {
       toast(err instanceof Error ? err.message : 'Something went wrong', 'error')
     } finally {
@@ -520,6 +527,15 @@ export function BookingsClient({ initialBookings, suppliers, drivers, profile }:
           profile={profile}
           onEdit={() => handleEdit(selectedBooking)}
           onRefresh={refresh}
+          onCancelled={(bookingId, reason) => {
+            setBookings((prev) =>
+              prev.map((b) =>
+                b.id === bookingId
+                  ? { ...b, status: 'cancelled' as BookingStatus, cancellation_reason: reason }
+                  : b
+              )
+            )
+          }}
         />
       )}
 

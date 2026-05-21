@@ -18,9 +18,10 @@ interface Props {
   profile: Profile
   onEdit: () => void
   onRefresh: () => void
+  onCancelled?: (bookingId: string, reason: string) => void
 }
 
-export function BookingDetailModal({ open, onClose, booking, suppliers, drivers, profile, onEdit, onRefresh }: Props) {
+export function BookingDetailModal({ open, onClose, booking, suppliers, drivers, profile, onEdit, onRefresh, onCancelled }: Props) {
   const { toast } = useToast()
   const [quotes, setQuotes] = useState<Quote[]>([])
   const [showAddQuote, setShowAddQuote] = useState(false)
@@ -386,8 +387,14 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, drivers,
       }
       toast('Booking cancelled', 'success')
       setShowCancelModal(false)
+      const reason = cancelReason.trim()
       setCancelReason('')
-      onRefresh()
+      // Use optimistic update if available, otherwise full refresh
+      if (onCancelled) {
+        onCancelled(booking.id, reason)
+      } else {
+        onRefresh()
+      }
       onClose()
     } catch (err) {
       toast(err instanceof Error ? err.message : 'Something went wrong', 'error')
