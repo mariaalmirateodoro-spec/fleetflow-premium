@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { CheckCircle, XCircle, MessageSquare, Clock, Loader2, ChevronDown, ChevronUp, Truck } from 'lucide-react'
+import { CheckCircle, XCircle, MessageSquare, Clock, Loader2, ChevronDown, ChevronUp, Truck, Trash2 } from 'lucide-react'
 import { formatDateTime, formatCurrency, vehicleLabels, timeAgo } from '@/lib/utils'
 import { StatusBadge, Badge } from '@/components/ui/Badge'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -26,6 +26,8 @@ export function ApprovalsClient({ pendingBookings, recentApprovals, profile, sup
   const [finalCost, setFinalCost] = useState('')
   const [loading, setLoading] = useState(false)
   const [expanded, setExpanded] = useState<string | null>(null)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [deleteLoading, setDeleteLoading] = useState(false)
 
   function openModal(booking: Booking, action: 'approved' | 'rejected' | 'revision_requested') {
     setActionModal({ booking, action })
@@ -39,6 +41,22 @@ export function ApprovalsClient({ pendingBookings, recentApprovals, profile, sup
     setComments('')
     setSelectedSupplierId('')
     setFinalCost('')
+  }
+
+  async function handlePermanentDelete(bookingId: string) {
+    setDeleteLoading(true)
+    try {
+      const res = await fetch(`/api/bookings/${bookingId}`, { method: 'DELETE' })
+      const result = await res.json()
+      if (!res.ok) throw new Error(result.error ?? 'Delete failed')
+      toast('Booking deleted', 'success')
+      setConfirmDeleteId(null)
+      router.refresh()
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Failed to delete booking', 'error')
+    } finally {
+      setDeleteLoading(false)
+    }
   }
 
   async function handleAction() {
@@ -177,6 +195,35 @@ export function ApprovalsClient({ pendingBookings, recentApprovals, profile, sup
                           {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                           Quotes
                         </button>
+                      )}
+                      {profile.role === 'admin' && (
+                        confirmDeleteId === booking.id ? (
+                          <div className="flex items-center gap-1 mt-1">
+                            <span className="text-[11px] text-red-400">Delete?</span>
+                            <button
+                              onClick={() => handlePermanentDelete(booking.id)}
+                              disabled={deleteLoading}
+                              className="text-[11px] px-2 py-0.5 rounded bg-red-500 hover:bg-red-600 text-white font-semibold transition-colors disabled:opacity-50"
+                            >
+                              {deleteLoading ? '…' : 'Yes'}
+                            </button>
+                            <button
+                              onClick={() => setConfirmDeleteId(null)}
+                              className="text-[11px] px-2 py-0.5 rounded bg-white/10 hover:bg-white/15 text-slate-400 transition-colors"
+                            >
+                              No
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setConfirmDeleteId(booking.id)}
+                            className="flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-xl border transition-all bg-red-500/5 border-red-500/15 text-red-500/60 hover:bg-red-500/15 hover:text-red-400 hover:border-red-500/30 mt-1"
+                            title="Permanently delete this booking"
+                          >
+                            <Trash2 className="w-3.5 h-3.5 shrink-0" />
+                            <span className="hidden sm:block">Delete</span>
+                          </button>
+                        )
                       )}
                     </div>
                   </div>

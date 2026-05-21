@@ -131,10 +131,11 @@ export function BookingsClient({ initialBookings, suppliers, drivers, profile }:
   }
 
   async function handlePermanentDelete(bookingId: string) {
-    const supabase = createClient()
-    const { error } = await supabase.from('bookings').delete().eq('id', bookingId)
+    const res = await fetch(`/api/bookings/${bookingId}`, { method: 'DELETE' })
+    const result = await res.json()
+    const error = res.ok ? null : result.error
     if (error) {
-      toast('Failed to delete booking', 'error')
+      toast(typeof error === 'string' ? error : 'Failed to delete booking', 'error')
     } else {
       toast('Booking deleted', 'success')
       setConfirmDeleteId(null)
