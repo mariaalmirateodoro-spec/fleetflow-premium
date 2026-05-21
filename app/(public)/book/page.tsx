@@ -412,7 +412,11 @@ function BookingForm() {
         </button>
 
         <p className="text-center text-slate-500 text-xs">
-          By submitting, you agree that our team will contact you to confirm your booking details.
+          By submitting, you agree to our{' '}
+          <Link href="/terms" className="underline hover:text-slate-300 transition-colors">Terms of Service</Link>
+          {' '}and{' '}
+          <Link href="/privacy" className="underline hover:text-slate-300 transition-colors">Privacy Policy</Link>.
+          Our team will contact you to confirm your booking details.
         </p>
       </form>
     </div>

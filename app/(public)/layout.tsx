@@ -48,9 +48,11 @@ export default function PublicLayout({ children }: { children: React.ReactNode }
       <footer className="relative z-10 border-t border-white/5 mt-24 py-10">
         <div className="max-w-7xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-slate-500 text-sm">
           <span>© {new Date().getFullYear()} FleetFlow Premium. All rights reserved.</span>
-          <Link href="/login" className="hover:text-slate-300 transition-colors">
-            Staff Portal →
-          </Link>
+          <div className="flex items-center gap-6">
+            <Link href="/privacy" className="hover:text-slate-300 transition-colors">Privacy Policy</Link>
+            <Link href="/terms" className="hover:text-slate-300 transition-colors">Terms of Service</Link>
+            <Link href="/login" className="hover:text-slate-300 transition-colors">Staff Portal →</Link>
+          </div>
         </div>
       </footer>
     </div>

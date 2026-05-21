@@ -2,10 +2,56 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { sendBookingConfirmationEmail } from '@/lib/email'
 
+// ─── Simple in-memory rate limiter ───────────────────────────
+// Limits each IP to 5 booking submissions per 10 minutes.
+// Works within a single serverless instance lifetime on Vercel.
+const RATE_LIMIT_MAX = 5
+const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000 // 10 minutes
+
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>()
+
+function getClientIp(request: NextRequest): string {
+  return (
+    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+    request.headers.get('x-real-ip') ||
+    'unknown'
+  )
+}
+
+function checkRateLimit(ip: string): { allowed: boolean; retryAfterSeconds: number } {
+  const now = Date.now()
+  const entry = rateLimitMap.get(ip)
+
+  if (!entry || now > entry.resetAt) {
+    rateLimitMap.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS })
+    return { allowed: true, retryAfterSeconds: 0 }
+  }
+
+  if (entry.count >= RATE_LIMIT_MAX) {
+    return { allowed: false, retryAfterSeconds: Math.ceil((entry.resetAt - now) / 1000) }
+  }
+
+  entry.count++
+  return { allowed: true, retryAfterSeconds: 0 }
+}
+
 // Public endpoint — no auth required. Uses anon key + RLS policy that allows
 // inserts where created_by IS NULL (guest bookings).
 export async function POST(request: NextRequest) {
   try {
+    // Rate limit check
+    const ip = getClientIp(request)
+    const { allowed, retryAfterSeconds } = checkRateLimit(ip)
+    if (!allowed) {
+      return NextResponse.json(
+        { error: 'Too many booking requests. Please wait a few minutes before trying again.' },
+        {
+          status: 429,
+          headers: { 'Retry-After': String(retryAfterSeconds) },
+        }
+      )
+    }
+
     const anonClient = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
