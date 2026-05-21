@@ -22,7 +22,7 @@ export default async function DriversPage() {
       .order('full_name'),
     supabase
       .from('suppliers')
-      .select('id, company_name')
+      .select('*')
       .eq('is_available', true)
       .order('company_name'),
   ])
