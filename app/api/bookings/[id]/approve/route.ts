@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { sendBookingApprovedEmail, sendBookingRejectedEmail } from '@/lib/email'
+
+function createAdminClient() {
+  return createSupabaseClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } }
+  )
+}
 
 export async function POST(
   request: NextRequest,
@@ -75,7 +84,8 @@ export async function POST(
     bookingUpdate.cancellation_reason = comments ?? null
   }
 
-  const { error: updateErr } = await supabase
+  const admin = createAdminClient()
+  const { error: updateErr } = await admin
     .from('bookings')
     .update(bookingUpdate)
     .eq('id', params.id)
@@ -85,7 +95,7 @@ export async function POST(
   }
 
   // Insert approval record
-  await supabase.from('approvals').insert({
+  await admin.from('approvals').insert({
     booking_id: params.id,
     reviewer_id: profile.id,
     action,
@@ -104,7 +114,7 @@ export async function POST(
         ? `Booking ${booking.reference_number} was rejected.${comments ? ' Reason: ' + comments : ''}`
         : `Booking ${booking.reference_number} needs revision.${comments ? ' Notes: ' + comments : ''}`
 
-    await supabase.from('notifications').insert({
+    await admin.from('notifications').insert({
       user_id: booking.created_by,
       type: action === 'approved' ? 'approved' : 'system',
       title: notifTitle,
