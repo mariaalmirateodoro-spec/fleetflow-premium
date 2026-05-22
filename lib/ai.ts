@@ -92,11 +92,13 @@ export async function draftSupplierEmail(booking: Booking, supplier: Supplier): 
     // Real OpenAI call would go here
   }
 
-  const pickupDate = new Date(booking.pickup_datetime).toLocaleDateString('en-US', {
+  const pickupDate = new Date(booking.pickup_datetime).toLocaleDateString('en-PH', {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+    timeZone: 'Asia/Manila',
   })
-  const pickupTime = new Date(booking.pickup_datetime).toLocaleTimeString('en-US', {
+  const pickupTime = new Date(booking.pickup_datetime).toLocaleTimeString('en-PH', {
     hour: '2-digit', minute: '2-digit',
+    timeZone: 'Asia/Manila',
   })
 
   return `Subject: Vehicle Quote Request – ${booking.reference_number} | ${pickupDate}
@@ -115,7 +117,8 @@ BOOKING DETAILS:
 • Date & Time: ${pickupDate} at ${pickupTime}
 • Drop-off: ${booking.dropoff_location}
 ${booking.budget_usd ? `• Budget: PHP ${booking.budget_usd}` : ''}
-${booking.notes ? `• Special Notes: ${booking.notes}` : ''}
+${booking.special_requests ? `• Special Requests: ${booking.special_requests}` : ''}
+${booking.notes ? `• Notes: ${booking.notes}` : ''}
 
 Could you please provide your best quote at your earliest convenience? We would appreciate a response within 24 hours.
 
@@ -131,9 +134,11 @@ Email: operations@fleetflow.com
 export function generateViberMessage(booking: Booking, supplier: Supplier): string {
   const fmt = (dt: string) => new Date(dt).toLocaleDateString('en-PH', {
     weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
+    timeZone: 'Asia/Manila',
   })
   const fmtTime = (dt: string) => new Date(dt).toLocaleTimeString('en-PH', {
     hour: '2-digit', minute: '2-digit',
+    timeZone: 'Asia/Manila',
   })
 
   const vehicleLabel = booking.vehicle_type.charAt(0).toUpperCase() + booking.vehicle_type.slice(1)
@@ -177,7 +182,7 @@ We have a transport booking and would like your quote:
 📋 Ref: ${booking.reference_number}
 👤 Guest: ${booking.guest_name} (${booking.guest_nationality}) — ${booking.guest_count} pax
 🚗 Vehicle: ${vehicleLabel}
-${tripDetails}${booking.budget_usd ? `\n💰 Budget: PHP ${booking.budget_usd}` : ''}${booking.notes ? `\n📝 Notes: ${booking.notes}` : ''}
+${tripDetails}${booking.budget_usd ? `\n💰 Budget: PHP ${booking.budget_usd}` : ''}${booking.special_requests ? `\n⭐ Special Requests: ${booking.special_requests}` : ''}${booking.notes ? `\n📝 Notes: ${booking.notes}` : ''}
 
 Please reply with your best rate ASAP. Thank you! 🙏
 — FleetFlow Team`
@@ -187,9 +192,11 @@ Please reply with your best rate ASAP. Thank you! 🙏
 export function draftGuestEmail(booking: Booking, selectedQuote?: Quote | null): string {
   const pickupDate = new Date(booking.pickup_datetime).toLocaleDateString('en-PH', {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+    timeZone: 'Asia/Manila',
   })
   const pickupTime = new Date(booking.pickup_datetime).toLocaleTimeString('en-PH', {
     hour: '2-digit', minute: '2-digit',
+    timeZone: 'Asia/Manila',
   })
   const vehicleLabel = booking.vehicle_type.charAt(0).toUpperCase() + booking.vehicle_type.slice(1)
 
@@ -247,9 +254,11 @@ Email: operations@fleetflow.com`
 export function generateGuestViberMessage(booking: Booking, selectedQuote?: Quote | null, trackingUrl?: string): string {
   const fmt = (dt: string) => new Date(dt).toLocaleDateString('en-PH', {
     weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
+    timeZone: 'Asia/Manila',
   })
   const fmtTime = (dt: string) => new Date(dt).toLocaleTimeString('en-PH', {
     hour: '2-digit', minute: '2-digit',
+    timeZone: 'Asia/Manila',
   })
 
   const vehicleLabel = (selectedQuote?.vehicle_model
