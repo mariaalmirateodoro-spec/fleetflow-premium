@@ -331,7 +331,7 @@ export function ApprovalsClient({ pendingBookings, recentApprovals, profile, sup
 
                 <div>
                   <label className="text-xs text-slate-400 mb-1.5 block font-medium">
-                    Final Cost (USD)
+                    Final Cost (PHP)
                     <span className="ml-1 text-slate-600">(optional)</span>
                   </label>
                   <input
