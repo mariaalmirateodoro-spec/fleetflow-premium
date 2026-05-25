@@ -823,7 +823,12 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, drivers,
                   {guestEmailDraft ? (
                     <>
                       <div className="bg-black/20 rounded-xl p-3 border border-white/8">
-                        <pre className="text-[11px] text-slate-300 whitespace-pre-wrap font-sans leading-relaxed max-h-40 overflow-y-auto">{guestEmailDraft}</pre>
+                        <textarea
+                          className="w-full text-[11px] text-slate-300 whitespace-pre-wrap font-sans leading-relaxed max-h-40 overflow-y-auto bg-transparent border-none outline-none resize-none"
+                          value={guestEmailDraft}
+                          onChange={(e) => setGuestEmailDraft(e.target.value)}
+                          rows={8}
+                        />
                       </div>
                       <div className="flex gap-2">
                         <button
@@ -866,7 +871,12 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, drivers,
                   {guestViberDraft ? (
                     <>
                       <div className="bg-black/20 rounded-xl p-3 border border-[#7360f2]/20">
-                        <pre className="text-[11px] text-slate-300 whitespace-pre-wrap font-sans leading-relaxed max-h-40 overflow-y-auto">{guestViberDraft}</pre>
+                        <textarea
+                          className="w-full text-[11px] text-slate-300 whitespace-pre-wrap font-sans leading-relaxed max-h-40 overflow-y-auto bg-transparent border-none outline-none resize-none"
+                          value={guestViberDraft}
+                          onChange={(e) => setGuestViberDraft(e.target.value)}
+                          rows={8}
+                        />
                       </div>
                       <div className="flex gap-2">
                         <button
@@ -910,7 +920,12 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, drivers,
                   {guestLineDraft ? (
                     <>
                       <div className="bg-black/20 rounded-xl p-3 border border-[#06C755]/20">
-                        <pre className="text-[11px] text-slate-300 whitespace-pre-wrap font-sans leading-relaxed max-h-40 overflow-y-auto">{guestLineDraft}</pre>
+                        <textarea
+                          className="w-full text-[11px] text-slate-300 whitespace-pre-wrap font-sans leading-relaxed max-h-40 overflow-y-auto bg-transparent border-none outline-none resize-none"
+                          value={guestLineDraft}
+                          onChange={(e) => setGuestLineDraft(e.target.value)}
+                          rows={8}
+                        />
                       </div>
                       <div className="flex gap-2">
                         <button
@@ -1031,7 +1046,12 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, drivers,
                 {/* Draft preview */}
                 {currentDraft ? (
                   <div className="bg-black/20 rounded-xl p-3 border border-white/8">
-                    <pre className="text-[11px] text-slate-300 whitespace-pre-wrap font-sans leading-relaxed max-h-40 overflow-y-auto">{currentDraft}</pre>
+                    <textarea
+                      className="w-full text-[11px] text-slate-300 whitespace-pre-wrap font-sans leading-relaxed max-h-40 overflow-y-auto bg-transparent border-none outline-none resize-none"
+                      value={currentDraft}
+                      onChange={(e) => contactTab === 'email' ? setEmailDraft(e.target.value) : setViberDraft(e.target.value)}
+                      rows={8}
+                    />
                   </div>
                 ) : (
                   <div className="bg-white/[0.02] rounded-xl p-3 border border-white/5 text-center">

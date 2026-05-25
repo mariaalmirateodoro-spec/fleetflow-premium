@@ -19,14 +19,15 @@ export async function generateMetadata({
 
 function formatDate(iso: string | null | undefined) {
   if (!iso) return '—'
-  return new Date(iso).toLocaleString('en-US', {
-    weekday: 'short',
-    month: 'short',
+  return new Date(iso).toLocaleString('en-PH', {
+    weekday: 'long',
+    month: 'long',
     day: 'numeric',
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
     hour12: true,
+    timeZone: 'Asia/Manila',
   })
 }
 
@@ -200,7 +201,7 @@ export default async function BookingStatusPage({
                   Total cost
                 </span>
                 <span className="font-display font-bold text-2xl text-fleet-300">
-                  ${booking.final_cost_usd.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                  PHP {booking.final_cost_usd.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
                 </span>
               </div>
             )}

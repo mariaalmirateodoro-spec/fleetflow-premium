@@ -74,7 +74,6 @@ function DriverModal({ open, onClose, driver, suppliers, onSuccess }: ModalProps
       return
     }
     setLoading(true)
-    const supabase = createClient()
     const payload = {
       full_name: form.full_name.trim(),
       phone: form.phone.trim(),
@@ -86,13 +85,14 @@ function DriverModal({ open, onClose, driver, suppliers, onSuccess }: ModalProps
       notes: form.notes.trim() || null,
     }
 
-    const { error } = isEdit
-      ? await supabase.from('drivers').update(payload).eq('id', driver!.id)
-      : await supabase.from('drivers').insert(payload)
+    const res = isEdit
+      ? await fetch('/api/drivers', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: driver!.id, ...payload }) })
+      : await fetch('/api/drivers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+    const json = await res.json()
 
     setLoading(false)
-    if (error) {
-      toast(error.message, 'error')
+    if (!res.ok) {
+      toast(json.error ?? 'Something went wrong', 'error')
     } else {
       toast(isEdit ? 'Driver updated!' : 'Driver added!', 'success')
       onSuccess()
@@ -330,31 +330,29 @@ export function DriversClient({ initialDrivers, suppliers, profile }: Props) {
 
   async function refresh() {
     setLoading(true)
-    const supabase = createClient()
-    const { data } = await supabase
-      .from('drivers')
-      .select('*, suppliers(company_name)')
-      .order('full_name')
-    if (data) setDrivers(data as Driver[])
+    const res = await fetch('/api/drivers')
+    if (res.ok) {
+      const json = await res.json()
+      if (json.data) setDrivers(json.data as Driver[])
+    }
     setLoading(false)
   }
 
   async function toggleAvailability(driver: Driver) {
-    const supabase = createClient()
-    const { error } = await supabase
-      .from('drivers')
-      .update({ is_available: !driver.is_available })
-      .eq('id', driver.id)
-    if (error) { toast(error.message, 'error'); return }
+    const res = await fetch('/api/drivers', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: driver.id, is_available: !driver.is_available }),
+    })
+    if (!res.ok) { const j = await res.json(); toast(j.error ?? 'Update failed', 'error'); return }
     toast(`${driver.full_name} marked as ${!driver.is_available ? 'available' : 'unavailable'}`, 'success')
     await refresh()
   }
 
   async function handleDelete() {
     if (!confirmDelete) return
-    const supabase = createClient()
-    const { error } = await supabase.from('drivers').delete().eq('id', confirmDelete.id)
-    if (error) { toast(error.message, 'error') }
+    const res = await fetch(`/api/drivers?id=${confirmDelete.id}`, { method: 'DELETE' })
+    if (!res.ok) { const j = await res.json(); toast(j.error ?? 'Delete failed', 'error') }
     else { toast('Driver removed', 'success'); await refresh() }
     setConfirmDelete(null)
   }
