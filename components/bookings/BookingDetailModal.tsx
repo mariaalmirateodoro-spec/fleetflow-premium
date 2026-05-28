@@ -356,12 +356,19 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, drivers,
 
   function openGuestLine() {
     if (!guestLineDraft) return
-    // Always copy to clipboard first so the message is ready to paste
+    // Always copy message to clipboard first — user just pastes in LINE
     navigator.clipboard.writeText(guestLineDraft).catch(() => {})
-    // Try the LINE desktop/mobile URL scheme — works when LINE app is installed
-    const encoded = encodeURIComponent(guestLineDraft)
-    window.open(`https://line.me/R/msg/text/?${encoded}`, '_blank')
-    toast('Message copied! LINE opened — paste and send to the guest.', 'success')
+    // If we have the guest's LINE ID, open their specific chat (works on desktop + mobile)
+    // Otherwise fall back to the general LINE share URL
+    const lineId = booking.guest_line_id
+    if (lineId) {
+      window.open(`line://ti/p/${encodeURIComponent(lineId)}`, '_blank')
+      toast(`Message copied! Opening ${booking.guest_name}'s LINE chat — paste and send.`, 'success')
+    } else {
+      const encoded = encodeURIComponent(guestLineDraft)
+      window.open(`line://msg/text/${encoded}`, '_blank')
+      toast('Message copied! LINE opened — select the guest and paste to send.', 'success')
+    }
   }
   function sendGuestEmail() {
     if (!booking.guest_email || !guestEmailDraft) return
