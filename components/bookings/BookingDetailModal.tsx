@@ -356,12 +356,12 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, drivers,
 
   function openGuestLine() {
     if (!guestLineDraft) return
-    // Open LINE with the message pre-filled — user just picks the contact and taps Send
-    const encoded = encodeURIComponent(guestLineDraft)
-    window.open(`line://msg/text/${encoded}`, '_blank')
-    // Copy as fallback for desktop where the URL scheme may not launch LINE
+    // Always copy to clipboard first so the message is ready to paste
     navigator.clipboard.writeText(guestLineDraft).catch(() => {})
-    toast('LINE opened — select the guest contact and tap Send', 'success')
+    // Try the LINE desktop/mobile URL scheme — works when LINE app is installed
+    const encoded = encodeURIComponent(guestLineDraft)
+    window.open(`https://line.me/R/msg/text/?${encoded}`, '_blank')
+    toast('Message copied! LINE opened — paste and send to the guest.', 'success')
   }
   function sendGuestEmail() {
     if (!booking.guest_email || !guestEmailDraft) return
