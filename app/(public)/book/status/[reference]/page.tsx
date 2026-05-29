@@ -1,8 +1,17 @@
 import { createClient } from '@/lib/supabase/server'
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import type { Metadata } from 'next'
 import type { Booking, BookingStatus } from '@/types'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
+
+function createAdminClient() {
+  return createSupabaseClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } }
+  )
+}
 
 // ─── Metadata ────────────────────────────────────────────────
 export async function generateMetadata({
@@ -158,17 +167,24 @@ export default async function BookingStatusPage({
 
   const { data: booking, error } = await supabase
     .from('bookings')
-    .select('*, suppliers(company_name, contact_person, phone), drivers(full_name, phone), approvals(action, comments, created_at)')
+    .select('*, suppliers(company_name, contact_person, phone), drivers(full_name, phone)')
     .eq('reference_number', params.reference.toUpperCase())
     .single()
 
   if (error || !booking) notFound()
 
-  // Get the most recent approval comments (notes to guest)
-  const approvalRecords = (booking.approvals ?? []) as { action: string; comments: string | null; created_at: string }[]
-  const approvalNotes = approvalRecords
-    .filter((a) => a.action === 'approved' && a.comments)
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]?.comments ?? null
+  // Fetch approval notes via admin client (approvals table has RLS — anon key can't read it)
+  const admin = createAdminClient()
+  const { data: approvalRecords } = await admin
+    .from('approvals')
+    .select('action, comments, created_at')
+    .eq('booking_id', booking.id)
+    .eq('action', 'approved')
+    .not('comments', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(1)
+
+  const approvalNotes = approvalRecords?.[0]?.comments ?? null
 
   const cfg = getStatusConfig(booking as Booking)
   const timeline = buildTimeline(booking as Booking)
