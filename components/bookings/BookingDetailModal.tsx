@@ -101,13 +101,14 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, drivers,
 
   async function doAssignDriver(driverId: string | null) {
     setDriverLoading(true)
-    const supabase = createClient()
-    const { error } = await supabase
-      .from('bookings')
-      .update({ driver_id: driverId })
-      .eq('id', booking.id)
-    if (error) {
-      toast(`Failed to update driver: ${error.message}`, 'error')
+    const res = await fetch(`/api/bookings/${booking.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ driver_id: driverId }),
+    })
+    const json = await res.json()
+    if (!res.ok) {
+      toast(`Failed to update driver: ${json.error ?? 'Unknown error'}`, 'error')
     } else {
       setAssignedDriverId(driverId)
       toast(driverId ? 'Driver assigned!' : 'Driver removed', 'success')

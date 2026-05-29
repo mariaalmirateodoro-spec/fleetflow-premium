@@ -32,7 +32,9 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await request.json()
-  const { data, error } = await supabase
+  // Use admin client to bypass RLS for booking updates (driver assignment, etc.)
+  const admin = createAdminClient()
+  const { data, error } = await admin
     .from('bookings')
     .update(body)
     .eq('id', params.id)
