@@ -271,19 +271,26 @@ export default async function BookingStatusPage({
         <div className="rounded-2xl border border-white/8 bg-white/3 p-6">
           <h2 className="font-semibold text-white text-sm mb-4">Trip details</h2>
           <dl className="space-y-3">
-            {[
-              { label: 'Guest name', value: booking.guest_name },
-              { label: 'Passengers', value: `${booking.guest_count} person${booking.guest_count !== 1 ? 's' : ''}` },
-              { label: 'Vehicle', value: formatVehicle(booking.vehicle_type) },
-              { label: 'Driver', value: booking.driver_required ? 'Yes — included' : 'Self-drive' },
-              { label: 'Pickup', value: formatDate(booking.pickup_datetime) },
-              { label: 'Drop-off', value: formatDate(booking.dropoff_datetime) },
-              { label: 'From', value: booking.pickup_location },
-              { label: 'To', value: booking.dropoff_location },
-              ...(booking.special_requests
-                ? [{ label: 'Special requests', value: booking.special_requests }]
-                : []),
-            ].map(({ label, value }) => (
+            {(() => {
+              const driver = booking.drivers as { full_name?: string; phone?: string } | null
+              const driverValue = !booking.driver_required
+                ? 'Self-drive'
+                : driver?.full_name
+                ? `${driver.full_name}${driver.phone ? ` · ${driver.phone}` : ''}`
+                : 'Yes — included (driver TBA)'
+
+              return [
+                { label: 'Guest name', value: booking.guest_name },
+                { label: 'Passengers', value: `${booking.guest_count} person${booking.guest_count !== 1 ? 's' : ''}` },
+                { label: 'Vehicle', value: formatVehicle(booking.vehicle_type) },
+                { label: 'Driver', value: driverValue },
+                { label: 'Pickup', value: formatDate(booking.pickup_datetime) },
+                { label: 'Drop-off', value: formatDate(booking.dropoff_datetime) },
+                { label: 'From', value: booking.pickup_location },
+                { label: 'To', value: booking.dropoff_location },
+                { label: 'Special requests', value: booking.special_requests || '—' },
+              ]
+            })().map(({ label, value }) => (
               <div key={label} className="flex flex-col sm:flex-row sm:justify-between gap-1">
                 <dt className="text-slate-500 text-xs uppercase tracking-wider font-medium w-32 flex-shrink-0">
                   {label}
