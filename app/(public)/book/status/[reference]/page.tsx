@@ -167,14 +167,26 @@ export default async function BookingStatusPage({
 
   const { data: booking, error } = await supabase
     .from('bookings')
-    .select('*, suppliers(company_name, contact_person, phone), drivers(full_name, phone)')
+    .select('*, suppliers(company_name, contact_person, phone)')
     .eq('reference_number', params.reference.toUpperCase())
     .single()
 
   if (error || !booking) notFound()
 
-  // Fetch approval notes via admin client (approvals table has RLS — anon key can't read it)
+  // Use admin client to bypass RLS for drivers + approvals (anon key can't read these tables)
   const admin = createAdminClient()
+
+  // Fetch assigned driver
+  const driverData = booking.driver_id
+    ? await admin
+        .from('drivers')
+        .select('full_name, phone')
+        .eq('id', booking.driver_id)
+        .single()
+        .then((r) => r.data as { full_name: string; phone: string | null } | null)
+    : null
+
+  // Fetch approval notes
   const { data: approvalRecords } = await admin
     .from('approvals')
     .select('action, comments, created_at')
@@ -274,42 +286,38 @@ export default async function BookingStatusPage({
         })()}
 
         {/* Driver card — show whenever a driver is assigned */}
-        {booking.drivers && (() => {
-          const driver = booking.drivers as { full_name?: string; phone?: string }
-          return driver.full_name ? (
-            <div className="rounded-2xl border border-blue-500/20 bg-blue-500/5 p-5">
-              <div className="flex items-center gap-2 mb-3">
-                <span className="text-blue-400 text-base">🧑‍✈️</span>
-                <h2 className="font-semibold text-blue-300 text-sm">Your Driver</h2>
-              </div>
-              <dl className="space-y-2">
-                <div className="flex justify-between">
-                  <dt className="text-slate-500 text-xs uppercase tracking-wider">Name</dt>
-                  <dd className="text-slate-200 text-sm font-medium">{driver.full_name}</dd>
-                </div>
-                {driver.phone && (
-                  <div className="flex justify-between">
-                    <dt className="text-slate-500 text-xs uppercase tracking-wider">Phone</dt>
-                    <dd className="text-slate-200 text-sm">
-                      <a href={`tel:${driver.phone}`} className="text-blue-400 hover:underline">{driver.phone}</a>
-                    </dd>
-                  </div>
-                )}
-              </dl>
+        {driverData?.full_name && (
+          <div className="rounded-2xl border border-blue-500/20 bg-blue-500/5 p-5">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-blue-400 text-base">🧑‍✈️</span>
+              <h2 className="font-semibold text-blue-300 text-sm">Your Driver</h2>
             </div>
-          ) : null
-        })()}
+            <dl className="space-y-2">
+              <div className="flex justify-between">
+                <dt className="text-slate-500 text-xs uppercase tracking-wider">Name</dt>
+                <dd className="text-slate-200 text-sm font-medium">{driverData.full_name}</dd>
+              </div>
+              {driverData.phone && (
+                <div className="flex justify-between">
+                  <dt className="text-slate-500 text-xs uppercase tracking-wider">Phone</dt>
+                  <dd className="text-slate-200 text-sm">
+                    <a href={`tel:${driverData.phone}`} className="text-blue-400 hover:underline">{driverData.phone}</a>
+                  </dd>
+                </div>
+              )}
+            </dl>
+          </div>
+        )}
 
         {/* Trip details */}
         <div className="rounded-2xl border border-white/8 bg-white/3 p-6">
           <h2 className="font-semibold text-white text-sm mb-4">Trip details</h2>
           <dl className="space-y-3">
             {(() => {
-              const driver = booking.drivers as { full_name?: string; phone?: string } | null
               const driverValue = !booking.driver_required
                 ? 'Self-drive'
-                : driver?.full_name
-                ? `${driver.full_name}${driver.phone ? ` · ${driver.phone}` : ''}`
+                : driverData?.full_name
+                ? `${driverData.full_name}${driverData.phone ? ` · ${driverData.phone}` : ''}`
                 : 'Yes — included (driver TBA)'
 
               return [
