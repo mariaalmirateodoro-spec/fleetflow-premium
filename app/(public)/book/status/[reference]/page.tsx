@@ -158,11 +158,17 @@ export default async function BookingStatusPage({
 
   const { data: booking, error } = await supabase
     .from('bookings')
-    .select('*, suppliers(company_name, contact_person, phone), drivers(full_name, phone)')
+    .select('*, suppliers(company_name, contact_person, phone), drivers(full_name, phone), approvals(action, comments, created_at)')
     .eq('reference_number', params.reference.toUpperCase())
     .single()
 
   if (error || !booking) notFound()
+
+  // Get the most recent approval comments (notes to guest)
+  const approvalRecords = (booking.approvals ?? []) as { action: string; comments: string | null; created_at: string }[]
+  const approvalNotes = approvalRecords
+    .filter((a) => a.action === 'approved' && a.comments)
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]?.comments ?? null
 
   const cfg = getStatusConfig(booking as Booking)
   const timeline = buildTimeline(booking as Booking)
@@ -206,6 +212,17 @@ export default async function BookingStatusPage({
               </div>
             )}
         </div>
+
+        {/* Notes from our team — show when approval comments exist */}
+        {approvalNotes && (
+          <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-5">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-amber-400 text-base">📝</span>
+              <h2 className="font-semibold text-amber-300 text-sm">Notes from our team</h2>
+            </div>
+            <p className="text-slate-200 text-sm leading-relaxed whitespace-pre-wrap">{approvalNotes}</p>
+          </div>
+        )}
 
         {/* Supplier card — show whenever a supplier is assigned */}
         {booking.suppliers && (() => {
