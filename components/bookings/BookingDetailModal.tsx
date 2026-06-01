@@ -31,6 +31,11 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, drivers,
   // Driver assignment state
   const [assignedDriverId, setAssignedDriverId] = useState<string | null>(booking.driver_id ?? null)
   const [driverLoading, setDriverLoading] = useState(false)
+
+  // Vehicle details state
+  const [vehiclePlate, setVehiclePlate] = useState(booking.vehicle_plate ?? '')
+  const [vehicleModel, setVehicleModel] = useState(booking.vehicle_model ?? '')
+  const [vehicleSaving, setVehicleSaving] = useState(false)
   const [conflictWarning, setConflictWarning] = useState<{
     conflicts: Array<{ reference_number: string; guest_name: string; pickup_datetime: string; dropoff_datetime: string | null }>
     driverId: string
@@ -80,7 +85,9 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, drivers,
   // Sync assigned driver when booking prop changes
   useEffect(() => {
     setAssignedDriverId(booking.driver_id ?? null)
-  }, [booking.driver_id])
+    setVehiclePlate(booking.vehicle_plate ?? '')
+    setVehicleModel(booking.vehicle_model ?? '')
+  }, [booking.driver_id, booking.vehicle_plate, booking.vehicle_model])
 
   // Reset drafts when supplier changes
   useEffect(() => {
@@ -115,6 +122,26 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, drivers,
       onRefresh()
     }
     setDriverLoading(false)
+  }
+
+  async function saveVehicleDetails() {
+    setVehicleSaving(true)
+    const res = await fetch(`/api/bookings/${booking.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        vehicle_plate: vehiclePlate.trim() || null,
+        vehicle_model: vehicleModel.trim() || null,
+      }),
+    })
+    const json = await res.json()
+    if (!res.ok) {
+      toast(`Failed to save vehicle details: ${json.error ?? 'Unknown error'}`, 'error')
+    } else {
+      toast('Vehicle details saved!', 'success')
+      onRefresh()
+    }
+    setVehicleSaving(false)
   }
 
   async function checkAndAssignDriver(driverId: string) {
@@ -566,6 +593,58 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, drivers,
               <div className="flex items-center gap-2">
                 <UserX className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                 <p className="text-xs text-amber-300">Required — no driver assigned yet</p>
+              </div>
+            )}
+          </div>
+
+          {/* Vehicle details — plate + model */}
+          <div className="col-span-2 bg-white/[0.03] rounded-xl px-3 py-2.5">
+            <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">Vehicle Details</p>
+            {['admin', 'manager', 'staff'].includes(profile.role) && booking.status !== 'cancelled' && booking.status !== 'completed' ? (
+              <div className="space-y-2">
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <label className="text-[10px] text-slate-500 mb-1 block">Plate Number</label>
+                    <input
+                      type="text"
+                      value={vehiclePlate}
+                      onChange={(e) => setVehiclePlate(e.target.value)}
+                      placeholder="e.g. ABC 1234"
+                      className="input-dark text-xs py-1.5"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <label className="text-[10px] text-slate-500 mb-1 block">Vehicle Model</label>
+                    <input
+                      type="text"
+                      value={vehicleModel}
+                      onChange={(e) => setVehicleModel(e.target.value)}
+                      placeholder="e.g. Toyota HiAce"
+                      className="input-dark text-xs py-1.5"
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-end">
+                  <button
+                    onClick={saveVehicleDetails}
+                    disabled={vehicleSaving}
+                    className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-xl border border-fleet-500/30 bg-fleet-500/10 text-fleet-300 hover:bg-fleet-500/20 transition-all disabled:opacity-40"
+                  >
+                    {vehicleSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                    Save Vehicle Details
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex gap-6">
+                <div>
+                  <p className="text-[10px] text-slate-500 mb-0.5">Plate</p>
+                  <p className="text-xs text-slate-200 font-medium">{booking.vehicle_plate ?? '—'}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-slate-500 mb-0.5">Model</p>
+                  <p className="text-xs text-slate-200 font-medium">{booking.vehicle_model ?? '—'}</p>
+                </div>
               </div>
             )}
           </div>

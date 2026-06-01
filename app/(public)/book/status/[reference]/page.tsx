@@ -309,6 +309,30 @@ export default async function BookingStatusPage({
           </div>
         )}
 
+        {/* Vehicle card — show when plate or model is set */}
+        {(booking.vehicle_plate || booking.vehicle_model) && (
+          <div className="rounded-2xl border border-violet-500/20 bg-violet-500/5 p-5">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-violet-400 text-base">🚗</span>
+              <h2 className="font-semibold text-violet-300 text-sm">Your Vehicle</h2>
+            </div>
+            <dl className="space-y-2">
+              {booking.vehicle_model && (
+                <div className="flex justify-between">
+                  <dt className="text-slate-500 text-xs uppercase tracking-wider">Model</dt>
+                  <dd className="text-slate-200 text-sm font-medium">{booking.vehicle_model}</dd>
+                </div>
+              )}
+              {booking.vehicle_plate && (
+                <div className="flex justify-between">
+                  <dt className="text-slate-500 text-xs uppercase tracking-wider">Plate No.</dt>
+                  <dd className="text-slate-200 text-sm font-medium tracking-wider">{booking.vehicle_plate}</dd>
+                </div>
+              )}
+            </dl>
+          </div>
+        )}
+
         {/* Trip details */}
         <div className="rounded-2xl border border-white/8 bg-white/3 p-6">
           <h2 className="font-semibold text-white text-sm mb-4">Trip details</h2>

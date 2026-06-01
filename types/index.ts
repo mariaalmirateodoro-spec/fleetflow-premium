@@ -70,6 +70,8 @@ export interface Booking {
   vehicle_type: VehicleType
   driver_required: boolean
   driver_id: string | null
+  vehicle_plate: string | null
+  vehicle_model: string | null
   budget_usd: number | null
   final_cost_usd: number | null
   status: BookingStatus
