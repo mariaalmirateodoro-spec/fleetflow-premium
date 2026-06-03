@@ -70,12 +70,12 @@ interface BookingConfirmationData {
 export async function sendBookingConfirmationEmail(data: BookingConfirmationData) {
   const pickup = new Date(data.pickupDatetime).toLocaleString('en-US', {
     weekday: 'short', year: 'numeric', month: 'short', day: 'numeric',
-    hour: '2-digit', minute: '2-digit',
+    hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Manila',
   })
   const dropoff = data.dropoffDatetime
     ? new Date(data.dropoffDatetime).toLocaleString('en-US', {
         weekday: 'short', year: 'numeric', month: 'short', day: 'numeric',
-        hour: '2-digit', minute: '2-digit',
+        hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Manila',
       })
     : 'Not specified'
 
@@ -162,7 +162,7 @@ interface BookingStatusEmailData {
 export async function sendBookingApprovedEmail(data: BookingStatusEmailData) {
   const pickup = new Date(data.pickupDatetime).toLocaleString('en-US', {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-    hour: '2-digit', minute: '2-digit',
+    hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Manila',
   })
 
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '') ?? ''
@@ -199,7 +199,7 @@ export async function sendBookingApprovedEmail(data: BookingStatusEmailData) {
         <tr><td>Pickup Date &amp; Time</td><td>${pickup}</td></tr>
         <tr><td>Vehicle Type</td><td>${data.vehicleType}</td></tr>
         ${data.supplierName ? `<tr><td>Transport Provider</td><td><strong>${data.supplierName}</strong></td></tr>` : ''}
-        ${data.finalCost != null ? `<tr><td>Total Cost</td><td><strong style="color:#10b981">$${data.finalCost.toLocaleString('en-US', { minimumFractionDigits: 2 })}</strong></td></tr>` : ''}
+        ${data.finalCost != null ? `<tr><td>Total Cost</td><td><strong style="color:#10b981">₱${data.finalCost.toLocaleString('en-US', { minimumFractionDigits: 2 })}</strong></td></tr>` : ''}
       </table>
 
       ${data.comments ? `
@@ -308,7 +308,7 @@ interface BookingCancelledEmailData {
 export async function sendBookingCancelledEmail(data: BookingCancelledEmailData) {
   const pickup = new Date(data.pickupDatetime).toLocaleString('en-US', {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-    hour: '2-digit', minute: '2-digit',
+    hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Manila',
   })
 
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '') ?? ''
