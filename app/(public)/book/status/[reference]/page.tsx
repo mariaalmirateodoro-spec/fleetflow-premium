@@ -176,6 +176,15 @@ export default async function BookingStatusPage({
   // Use admin client to bypass RLS for drivers + approvals (anon key can't read these tables)
   const admin = createAdminClient()
 
+  // Auto-complete: if booking is approved and pickup time has already passed, mark it completed
+  if (booking.status === 'approved' && booking.pickup_datetime && new Date(booking.pickup_datetime) < new Date()) {
+    await admin
+      .from('bookings')
+      .update({ status: 'completed', updated_at: new Date().toISOString() })
+      .eq('id', booking.id)
+    booking.status = 'completed'
+  }
+
   // Fetch assigned driver
   const driverData = booking.driver_id
     ? await admin
