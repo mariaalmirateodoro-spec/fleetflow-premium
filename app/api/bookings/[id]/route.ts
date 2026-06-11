@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
+import { sendDriverAssignedEmail } from '@/lib/email'
 
 // Bypasses RLS — only used server-side for admin cascade deletes
 function createAdminClient() {
@@ -32,8 +33,36 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await request.json()
-  // Use admin client to bypass RLS for booking updates (driver assignment, etc.)
   const admin = createAdminClient()
+
+  // If a driver is being assigned, check whether it's a new/changed assignment
+  let shouldEmailDriver = false
+  let currentBooking: Record<string, unknown> | null = null
+  let assignedDriver: { full_name: string; phone: string } | null = null
+
+  if (body.driver_id != null) {
+    const { data: existing } = await admin
+      .from('bookings')
+      .select('driver_id, guest_email, guest_name, reference_number, pickup_location, dropoff_location, pickup_datetime, vehicle_type, vehicle_plate, vehicle_model')
+      .eq('id', params.id)
+      .single()
+
+    if (existing && existing.driver_id !== body.driver_id && existing.guest_email) {
+      const { data: driver } = await admin
+        .from('drivers')
+        .select('full_name, phone')
+        .eq('id', body.driver_id)
+        .single()
+
+      if (driver) {
+        shouldEmailDriver = true
+        currentBooking = existing as Record<string, unknown>
+        assignedDriver = driver as { full_name: string; phone: string }
+      }
+    }
+  }
+
+  // Use admin client to bypass RLS for booking updates
   const { data, error } = await admin
     .from('bookings')
     .update(body)
@@ -42,6 +71,28 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+
+  // Send driver assignment email to guest
+  if (shouldEmailDriver && currentBooking && assignedDriver) {
+    try {
+      await sendDriverAssignedEmail({
+        guestName: currentBooking.guest_name as string,
+        guestEmail: currentBooking.guest_email as string,
+        referenceNumber: currentBooking.reference_number as string,
+        pickupLocation: currentBooking.pickup_location as string,
+        dropoffLocation: currentBooking.dropoff_location as string,
+        pickupDatetime: currentBooking.pickup_datetime as string,
+        vehicleType: currentBooking.vehicle_type as string,
+        driverName: assignedDriver.full_name,
+        driverPhone: assignedDriver.phone,
+        vehiclePlate: (body.vehicle_plate ?? currentBooking.vehicle_plate) as string | null,
+        vehicleModel: (body.vehicle_model ?? currentBooking.vehicle_model) as string | null,
+      })
+    } catch (err) {
+      console.error('[driver-assign] email error:', err)
+    }
+  }
+
   return NextResponse.json({ data })
 }
 

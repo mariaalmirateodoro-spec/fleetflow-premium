@@ -18,6 +18,21 @@ async function sendEmail(to: string, subject: string, html: string) {
   return info
 }
 
+// ─── Helper: format vehicle type for display ──────────────────────────────────
+
+function formatVehicleType(type: string): string {
+  const map: Record<string, string> = {
+    sedan: 'Sedan',
+    suv: 'SUV',
+    van: 'Van',
+    minibus: 'Minibus',
+    luxury: 'Luxury Sedan',
+    pickup: 'Pickup Truck',
+  }
+  const key = type?.toLowerCase()
+  return map[key] ?? (type?.charAt(0).toUpperCase() + type?.slice(1)) ?? type
+}
+
 // ─── Shared styles ────────────────────────────────────────────────────────────
 
 const baseStyles = `
@@ -111,7 +126,7 @@ export async function sendBookingConfirmationEmail(data: BookingConfirmationData
         <tr><td>Drop-off Location</td><td>${data.dropoffLocation}</td></tr>
         <tr><td>Pickup Date &amp; Time</td><td>${pickup}</td></tr>
         <tr><td>Drop-off Date &amp; Time</td><td>${dropoff}</td></tr>
-        <tr><td>Vehicle Type</td><td>${data.vehicleType}</td></tr>
+        <tr><td>Vehicle Type</td><td>${formatVehicleType(data.vehicleType)}</td></tr>
         <tr><td>Number of Guests</td><td>${data.guestCount}</td></tr>
         ${data.specialRequests ? `<tr><td>Special Requests</td><td>${data.specialRequests}</td></tr>` : ''}
       </table>
@@ -197,7 +212,7 @@ export async function sendBookingApprovedEmail(data: BookingStatusEmailData) {
         <tr><td>Pickup Location</td><td>${data.pickupLocation}</td></tr>
         <tr><td>Drop-off Location</td><td>${data.dropoffLocation}</td></tr>
         <tr><td>Pickup Date &amp; Time</td><td>${pickup}</td></tr>
-        <tr><td>Vehicle Type</td><td>${data.vehicleType}</td></tr>
+        <tr><td>Vehicle Type</td><td>${formatVehicleType(data.vehicleType)}</td></tr>
         ${data.supplierName ? `<tr><td>Transport Provider</td><td><strong>${data.supplierName}</strong></td></tr>` : ''}
         ${data.finalCost != null ? `<tr><td>Total Cost</td><td><strong style="color:#10b981">₱${data.finalCost.toLocaleString('en-US', { minimumFractionDigits: 2 })}</strong></td></tr>` : ''}
       </table>
@@ -369,6 +384,194 @@ export async function sendBookingCancelledEmail(data: BookingCancelledEmailData)
   return await sendEmail(
     data.guestEmail,
     `Booking Cancelled — Ref: ${data.referenceNumber}`,
+    html,
+  )
+}
+
+// ─── Email: Driver Assigned ───────────────────────────────────────────────────
+
+interface DriverAssignedEmailData {
+  guestName: string
+  guestEmail: string
+  referenceNumber: string
+  pickupLocation: string
+  dropoffLocation: string
+  pickupDatetime: string
+  vehicleType: string
+  driverName: string
+  driverPhone: string
+  vehiclePlate?: string | null
+  vehicleModel?: string | null
+}
+
+export async function sendDriverAssignedEmail(data: DriverAssignedEmailData) {
+  const pickup = new Date(data.pickupDatetime).toLocaleString('en-US', {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+    hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Manila',
+  })
+
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '') ?? ''
+  const statusUrl = siteUrl ? `${siteUrl}/book/status/${data.referenceNumber}` : ''
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Driver Assigned</title>
+<style>${baseStyles}</style></head>
+<body>
+<div class="wrapper">
+  <div class="card">
+    <div class="header">
+      <div class="header-logo">🧑‍✈️</div>
+      <h1>FleetFlow Premium</h1>
+      <p>Guest Transport Management System</p>
+    </div>
+    <div class="body">
+      <p class="greeting">Hi <strong style="color:#e2e8f0">${data.guestName}</strong>,</p>
+
+      <div style="text-align:center;margin-bottom:28px;">
+        <span class="status-badge badge-approved">✓ Driver Assigned</span>
+      </div>
+
+      <div class="ref-box">
+        <p class="ref-label">Booking Reference</p>
+        <p class="ref-number">${data.referenceNumber}</p>
+      </div>
+
+      <p class="section-title">Your Driver</p>
+      <table class="detail-table">
+        <tr><td>Driver Name</td><td><strong style="color:#e2e8f0">${data.driverName}</strong></td></tr>
+        <tr><td>Contact Number</td><td><strong style="color:#10b981">${data.driverPhone}</strong></td></tr>
+        ${data.vehicleModel ? `<tr><td>Vehicle</td><td>${data.vehicleModel}</td></tr>` : ''}
+        ${data.vehiclePlate ? `<tr><td>Plate Number</td><td><strong style="color:#818cf8">${data.vehiclePlate}</strong></td></tr>` : ''}
+        <tr><td>Vehicle Type</td><td>${formatVehicleType(data.vehicleType)}</td></tr>
+      </table>
+
+      <p class="section-title">Trip Details</p>
+      <table class="detail-table">
+        <tr><td>Pickup Location</td><td>${data.pickupLocation}</td></tr>
+        <tr><td>Drop-off Location</td><td>${data.dropoffLocation}</td></tr>
+        <tr><td>Pickup Date &amp; Time</td><td>${pickup}</td></tr>
+      </table>
+
+      <div class="note-box">
+        <strong style="color:#c7d2fe">You're all set!</strong><br/>
+        Your driver will meet you at the pickup location. You can reach your driver directly at <strong style="color:#10b981">${data.driverPhone}</strong> if needed. Please be ready a few minutes before your scheduled pickup time.
+      </div>
+
+      ${statusUrl ? `<a href="${statusUrl}" class="cta-btn">View Booking Status →</a>` : ''}
+
+      <p style="color:#64748b;font-size:13px;text-align:center;margin:0">
+        Reference: <strong style="color:#818cf8">${data.referenceNumber}</strong>
+      </p>
+    </div>
+    <div class="footer">
+      <p>© ${new Date().getFullYear()} FleetFlow Premium · Internal System</p>
+      <p>This is an automated message. Please do not reply directly to this email.</p>
+    </div>
+  </div>
+</div>
+</body></html>`
+
+  return await sendEmail(
+    data.guestEmail,
+    `🧑‍✈️ Driver Assigned — Ref: ${data.referenceNumber}`,
+    html,
+  )
+}
+
+// ─── Email: Trip Reminder (day before) ───────────────────────────────────────
+
+interface TripReminderEmailData {
+  guestName: string
+  guestEmail: string
+  referenceNumber: string
+  pickupLocation: string
+  dropoffLocation: string
+  pickupDatetime: string
+  vehicleType: string
+  driverName?: string | null
+  driverPhone?: string | null
+  vehiclePlate?: string | null
+  vehicleModel?: string | null
+}
+
+export async function sendTripReminderEmail(data: TripReminderEmailData) {
+  const pickup = new Date(data.pickupDatetime).toLocaleString('en-US', {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+    hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Manila',
+  })
+  const timeOnly = new Date(data.pickupDatetime).toLocaleString('en-US', {
+    hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Manila',
+  })
+
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '') ?? ''
+  const statusUrl = siteUrl ? `${siteUrl}/book/status/${data.referenceNumber}` : ''
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Your Trip is Tomorrow</title>
+<style>${baseStyles}</style></head>
+<body>
+<div class="wrapper">
+  <div class="card">
+    <div class="header">
+      <div class="header-logo">🔔</div>
+      <h1>FleetFlow Premium</h1>
+      <p>Guest Transport Management System</p>
+    </div>
+    <div class="body">
+      <p class="greeting">Hi <strong style="color:#e2e8f0">${data.guestName}</strong>, your trip is coming up soon!</p>
+
+      <div style="background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.35);border-radius:10px;padding:18px 20px;text-align:center;margin-bottom:28px;">
+        <p style="color:#94a3b8;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin:0 0 8px;">Pickup Time</p>
+        <p style="color:#c7d2fe;font-size:28px;font-weight:700;margin:0 0 4px;">${timeOnly}</p>
+        <p style="color:#64748b;font-size:13px;margin:0;">${pickup}</p>
+      </div>
+
+      <div class="ref-box">
+        <p class="ref-label">Booking Reference</p>
+        <p class="ref-number">${data.referenceNumber}</p>
+      </div>
+
+      <p class="section-title">Trip Details</p>
+      <table class="detail-table">
+        <tr><td>Pickup Location</td><td><strong style="color:#e2e8f0">${data.pickupLocation}</strong></td></tr>
+        <tr><td>Drop-off Location</td><td>${data.dropoffLocation}</td></tr>
+        <tr><td>Vehicle Type</td><td>${formatVehicleType(data.vehicleType)}</td></tr>
+      </table>
+
+      ${data.driverName ? `
+      <p class="section-title">Your Driver</p>
+      <table class="detail-table">
+        <tr><td>Driver</td><td><strong style="color:#e2e8f0">${data.driverName}</strong></td></tr>
+        ${data.driverPhone ? `<tr><td>Contact</td><td><strong style="color:#10b981">${data.driverPhone}</strong></td></tr>` : ''}
+        ${data.vehicleModel ? `<tr><td>Vehicle</td><td>${data.vehicleModel}</td></tr>` : ''}
+        ${data.vehiclePlate ? `<tr><td>Plate Number</td><td><strong style="color:#818cf8">${data.vehiclePlate}</strong></td></tr>` : ''}
+      </table>
+      ` : ''}
+
+      <div class="note-box">
+        <strong style="color:#c7d2fe">Friendly reminder:</strong><br/>
+        Please be at <strong style="color:#e2e8f0">${data.pickupLocation}</strong> by <strong style="color:#c7d2fe">${timeOnly}</strong> tomorrow. If your plans have changed, please contact our team as soon as possible.
+      </div>
+
+      ${statusUrl ? `<a href="${statusUrl}" class="cta-btn">View Booking Details →</a>` : ''}
+
+      <p style="color:#64748b;font-size:13px;text-align:center;margin:0">
+        Reference: <strong style="color:#818cf8">${data.referenceNumber}</strong>
+      </p>
+    </div>
+    <div class="footer">
+      <p>© ${new Date().getFullYear()} FleetFlow Premium · Internal System</p>
+      <p>This is an automated message. Please do not reply directly to this email.</p>
+    </div>
+  </div>
+</div>
+</body></html>`
+
+  return await sendEmail(
+    data.guestEmail,
+    `🔔 Trip Reminder — Tomorrow at ${timeOnly} — Ref: ${data.referenceNumber}`,
     html,
   )
 }
