@@ -29,8 +29,9 @@ function formatVehicleType(type: string): string {
     luxury: 'Luxury Sedan',
     pickup: 'Pickup Truck',
   }
-  const key = type?.toLowerCase()
-  return map[key] ?? (type?.charAt(0).toUpperCase() + type?.slice(1)) ?? type
+  if (!type) return type
+  const key = type.toLowerCase()
+  return map[key] ?? (type.charAt(0).toUpperCase() + type.slice(1))
 }
 
 // ─── Shared styles ────────────────────────────────────────────────────────────
