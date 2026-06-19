@@ -86,6 +86,13 @@ export interface Booking {
   cancellation_reason: string | null
   created_at: string
   updated_at: string
+  // Modification request fields
+  modification_status: string | null
+  modification_pickup_datetime: string | null
+  modification_pickup_location: string | null
+  modification_dropoff_location: string | null
+  modification_notes: string | null
+  modification_requested_at: string | null
   // Relations
   profiles?: Profile
   suppliers?: Supplier

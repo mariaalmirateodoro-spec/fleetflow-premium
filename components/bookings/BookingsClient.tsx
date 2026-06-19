@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
-import { Plus, Search, Filter, Download, RefreshCw, Trash2, XCircle, Loader2, ChevronLeft, ChevronRight } from 'lucide-react'
+import { useState, useMemo, useEffect, useRef } from 'react'
+import { Plus, Search, Filter, Download, RefreshCw, Trash2, XCircle, Loader2, ChevronLeft, ChevronRight, ChevronDown, FileSpreadsheet } from 'lucide-react'
 import { cn, formatDateTime, formatCurrency, vehicleLabels } from '@/lib/utils'
 import { StatusBadge } from '@/components/ui/Badge'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -42,6 +42,19 @@ export function BookingsClient({ initialBookings, suppliers, drivers, profile }:
   const [cancelLoading, setCancelLoading] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
   const [driverNeededFilter, setDriverNeededFilter] = useState(false)
+  const [showExportMenu, setShowExportMenu] = useState(false)
+  const exportMenuRef = useRef<HTMLDivElement>(null)
+
+  // Close export dropdown on outside click
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
+        setShowExportMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
 
   // Reset to page 1 whenever any filter changes
   useEffect(() => { setCurrentPage(1) }, [search, statusFilter, vehicleFilter, dateFrom, dateTo, driverNeededFilter])
@@ -201,6 +214,42 @@ export function BookingsClient({ initialBookings, suppliers, drivers, profile }:
     URL.revokeObjectURL(url)
   }
 
+  async function exportXLSX() {
+    // Dynamic import so xlsx is only loaded on demand
+    const XLSX = await import('xlsx')
+    const date = new Date().toISOString().slice(0, 10)
+
+    const rows = filtered.map((b) => {
+      const supplier = b.suppliers as { company_name?: string } | undefined
+      const driver = b.drivers as { full_name?: string } | undefined
+      return {
+        Reference: b.reference_number,
+        'Guest Name': b.guest_name,
+        Nationality: b.guest_nationality,
+        Guests: b.guest_count,
+        Vehicle: vehicleLabels[b.vehicle_type],
+        'Driver Required': b.driver_required ? 'Yes' : 'No',
+        'Assigned Driver': driver?.full_name ?? '',
+        'Pickup Location': b.pickup_location,
+        'Dropoff Location': b.dropoff_location,
+        'Pickup Date/Time': b.pickup_datetime ? formatDateTime(b.pickup_datetime) : '',
+        'Dropoff Date/Time': b.dropoff_datetime ? formatDateTime(b.dropoff_datetime) : '',
+        'Budget (USD)': b.budget_usd ?? '',
+        'Final Cost (USD)': b.final_cost_usd ?? '',
+        Supplier: supplier?.company_name ?? '',
+        Status: b.status,
+        'Special Requests': b.special_requests ?? '',
+        'Cancellation Reason': b.cancellation_reason ?? '',
+        'Created At': b.created_at ? formatDateTime(b.created_at) : '',
+      }
+    })
+
+    const ws = XLSX.utils.json_to_sheet(rows)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Bookings')
+    XLSX.writeFile(wb, `bookings-${date}.xlsx`)
+  }
+
   const canCreate = ['admin', 'staff', 'manager'].includes(profile.role)
 
   return (
@@ -222,9 +271,35 @@ export function BookingsClient({ initialBookings, suppliers, drivers, profile }:
             <button onClick={refresh} className="btn-secondary p-2.5" title="Refresh">
               <RefreshCw className={cn('w-4 h-4', loading && 'animate-spin')} />
             </button>
-            <button onClick={exportCSV} className="btn-secondary p-2.5" title="Export filtered results as CSV">
-              <Download className="w-4 h-4" />
-            </button>
+            {/* Export dropdown */}
+            <div ref={exportMenuRef} className="relative">
+              <button
+                onClick={() => setShowExportMenu((v) => !v)}
+                className="btn-secondary flex items-center gap-1.5 px-3 py-2.5"
+                title="Export filtered results"
+              >
+                <Download className="w-4 h-4" />
+                <ChevronDown className="w-3.5 h-3.5" />
+              </button>
+              {showExportMenu && (
+                <div className="absolute right-0 top-full mt-1.5 z-20 w-44 rounded-xl bg-[#1e2130] border border-white/10 shadow-xl overflow-hidden">
+                  <button
+                    onClick={() => { exportCSV(); setShowExportMenu(false) }}
+                    className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-slate-300 hover:bg-white/[0.06] transition-colors"
+                  >
+                    <Download className="w-4 h-4 text-slate-400" />
+                    Export CSV
+                  </button>
+                  <button
+                    onClick={() => { exportXLSX(); setShowExportMenu(false) }}
+                    className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-slate-300 hover:bg-white/[0.06] transition-colors"
+                  >
+                    <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+                    Export Excel
+                  </button>
+                </div>
+              )}
+            </div>
             {canCreate && (
               <button onClick={() => { setSelectedBooking(null); setShowModal(true) }} className="btn-primary">
                 <Plus className="w-4 h-4" /> New Booking

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Edit2, Mail, Plus, Star, Loader2, Sparkles, Check, Copy, Send, XCircle, CheckCircle2, PencilLine, UserCheck, UserX } from 'lucide-react'
+import { Edit2, Mail, Plus, Star, Loader2, Sparkles, Check, Copy, Send, XCircle, CheckCircle2, PencilLine, UserCheck, UserX, AlertTriangle } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { StatusBadge, Badge } from '@/components/ui/Badge'
 import { formatDateTime, formatCurrency, vehicleLabels } from '@/lib/utils'
@@ -20,6 +20,136 @@ interface Props {
   onRefresh: () => void
   onCancelled?: (bookingId: string, reason: string) => void
 }
+
+// ─── Modification Panel ───────────────────────────────────────────────────────
+
+interface ModificationPanelProps {
+  booking: Booking
+  canManage: boolean
+  onRefresh: () => void
+}
+
+function ModificationPanel({ booking, canManage, onRefresh }: ModificationPanelProps) {
+  const { toast } = useToast()
+  const [approving, setApproving] = useState(false)
+  const [rejecting, setRejecting] = useState(false)
+
+  async function handleApprove() {
+    setApproving(true)
+    try {
+      const res = await fetch(`/api/bookings/${booking.id}/modification/approve`, { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Failed to approve')
+      toast('Modification approved and guest notified.', 'success')
+      onRefresh()
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Something went wrong', 'error')
+    } finally {
+      setApproving(false)
+    }
+  }
+
+  async function handleReject() {
+    setRejecting(true)
+    try {
+      const res = await fetch(`/api/bookings/${booking.id}/modification/reject`, { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Failed to reject')
+      toast('Modification request rejected.', 'success')
+      onRefresh()
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Something went wrong', 'error')
+    } finally {
+      setRejecting(false)
+    }
+  }
+
+  const formatDT = (iso: string | null) => {
+    if (!iso) return null
+    return new Date(iso).toLocaleString('en-PH', {
+      timeZone: 'Asia/Manila',
+      year: 'numeric', month: 'short', day: 'numeric',
+      hour: '2-digit', minute: '2-digit',
+    })
+  }
+
+  const changes: { label: string; original: string | null; requested: string | null }[] = [
+    {
+      label: 'Pickup Date & Time',
+      original: formatDT(booking.pickup_datetime),
+      requested: formatDT(booking.modification_pickup_datetime),
+    },
+    {
+      label: 'Pickup Location',
+      original: booking.pickup_location,
+      requested: booking.modification_pickup_location,
+    },
+    {
+      label: 'Dropoff Location',
+      original: booking.dropoff_location,
+      requested: booking.modification_dropoff_location,
+    },
+  ].filter((c) => c.requested !== null)
+
+  return (
+    <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 space-y-3">
+      {/* Header */}
+      <div className="flex items-center gap-2 text-amber-400">
+        <AlertTriangle className="w-4 h-4 shrink-0" />
+        <span className="text-sm font-semibold">Guest Modification Request</span>
+        {booking.modification_requested_at && (
+          <span className="ml-auto text-[11px] text-slate-500">
+            {formatDT(booking.modification_requested_at)}
+          </span>
+        )}
+      </div>
+
+      {/* Requested changes */}
+      <div className="space-y-2">
+        {changes.map((c) => (
+          <div key={c.label} className="text-xs">
+            <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-0.5">{c.label}</p>
+            <div className="flex items-center gap-2">
+              <span className="text-slate-400 line-through">{c.original}</span>
+              <span className="text-slate-500">→</span>
+              <span className="text-amber-300 font-medium">{c.requested}</span>
+            </div>
+          </div>
+        ))}
+        {booking.modification_notes && (
+          <div className="text-xs">
+            <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-0.5">Notes</p>
+            <p className="text-amber-300">{booking.modification_notes}</p>
+          </div>
+        )}
+      </div>
+
+      {/* Actions */}
+      {canManage && (
+        <div className="flex gap-2 pt-1">
+          <button
+            onClick={handleReject}
+            disabled={approving || rejecting}
+            className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all disabled:opacity-60"
+          >
+            {rejecting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <XCircle className="w-3.5 h-3.5" />}
+            Reject
+          </button>
+          <button
+            onClick={handleApprove}
+            disabled={approving || rejecting}
+            className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-all disabled:opacity-60"
+          >
+            {approving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+            Approve Changes
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Main Modal ───────────────────────────────────────────────────────────────
 
 export function BookingDetailModal({ open, onClose, booking, suppliers, drivers, profile, onEdit, onRefresh, onCancelled }: Props) {
   const { toast } = useToast()
@@ -544,6 +674,15 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, drivers,
             )}
           </div>
         </div>
+
+        {/* Modification request panel */}
+        {booking.modification_status === 'pending' && (
+          <ModificationPanel
+            booking={booking}
+            canManage={canManageQuotes}
+            onRefresh={onRefresh}
+          />
+        )}
 
         {/* Details grid */}
         <div className="grid grid-cols-2 gap-3 text-sm">

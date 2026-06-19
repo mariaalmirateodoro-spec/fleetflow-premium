@@ -4,6 +4,7 @@ import type { Metadata } from 'next'
 import type { Booking, BookingStatus } from '@/types'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
+import ModificationRequestModal from '@/components/bookings/ModificationRequestModal'
 
 function createAdminClient() {
   return createSupabaseClient(
@@ -424,6 +425,13 @@ export default async function BookingStatusPage({
             ))}
           </ol>
         </div>
+
+        {/* Modification Request */}
+        <ModificationRequestModal
+          referenceNumber={booking.reference_number}
+          bookingStatus={booking.status}
+          hasExistingRequest={booking.modification_status === 'pending'}
+        />
 
         {/* Actions */}
         <div className="flex flex-col sm:flex-row gap-3">

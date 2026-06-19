@@ -576,3 +576,370 @@ export async function sendTripReminderEmail(data: TripReminderEmailData) {
     html,
   )
 }
+
+// ─────────────────────────────────────────────────────────────
+// Modification Request — admin notification
+// ─────────────────────────────────────────────────────────────
+
+interface ModificationRequestEmailData {
+  adminEmail: string
+  guestName: string
+  referenceNumber: string
+  requestedPickupDatetime: string | null
+  requestedPickupLocation: string | null
+  requestedDropoffLocation: string | null
+  requestedNotes: string | null
+  originalPickupDatetime: string
+  originalPickupLocation: string
+  originalDropoffLocation: string
+}
+
+export async function sendModificationRequestEmail(data: ModificationRequestEmailData) {
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '') ?? ''
+
+  const fmt = (iso: string) =>
+    new Date(iso).toLocaleString('en-US', {
+      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+      hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Manila',
+    })
+
+  const origPickup = fmt(data.originalPickupDatetime)
+
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${baseStyles}</style></head>
+<body>
+<div class="wrapper">
+  <div class="card">
+    <div class="header">
+      <h1>✏️ Modification Request</h1>
+      <p>A guest has requested changes to their booking</p>
+    </div>
+    <div class="body">
+      <div class="section">
+        <p class="label">Reference Number</p>
+        <p class="value">${data.referenceNumber}</p>
+      </div>
+      <div class="section">
+        <p class="label">Guest Name</p>
+        <p class="value">${data.guestName}</p>
+      </div>
+
+      <div class="divider"></div>
+      <p style="color:#94a3b8;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin:0 0 12px">Requested Changes</p>
+
+      ${data.requestedPickupDatetime ? `
+      <div class="section">
+        <p class="label">New Pickup Date/Time</p>
+        <p class="value">${fmt(data.requestedPickupDatetime)}</p>
+        <p style="color:#64748b;font-size:12px;margin:4px 0 0">Was: ${origPickup}</p>
+      </div>` : ''}
+
+      ${data.requestedPickupLocation ? `
+      <div class="section">
+        <p class="label">New Pickup Location</p>
+        <p class="value">${data.requestedPickupLocation}</p>
+        <p style="color:#64748b;font-size:12px;margin:4px 0 0">Was: ${data.originalPickupLocation}</p>
+      </div>` : ''}
+
+      ${data.requestedDropoffLocation ? `
+      <div class="section">
+        <p class="label">New Dropoff Location</p>
+        <p class="value">${data.requestedDropoffLocation}</p>
+        <p style="color:#64748b;font-size:12px;margin:4px 0 0">Was: ${data.originalDropoffLocation}</p>
+      </div>` : ''}
+
+      ${data.requestedNotes ? `
+      <div class="section">
+        <p class="label">Guest Notes</p>
+        <p class="value">${data.requestedNotes}</p>
+      </div>` : ''}
+
+      <div class="divider"></div>
+
+      <div style="text-align:center;margin:24px 0">
+        <a href="${siteUrl}/bookings" class="btn">Review Request in Admin →</a>
+      </div>
+    </div>
+    <div class="footer">
+      <p>© ${new Date().getFullYear()} FleetFlow Premium · Internal System</p>
+      <p>This is an automated message. Please do not reply directly to this email.</p>
+    </div>
+  </div>
+</div>
+</body></html>`
+
+  return await sendEmail(
+    data.adminEmail,
+    `✏️ Modification Request — ${data.guestName} — Ref: ${data.referenceNumber}`,
+    html,
+  )
+}
+
+// ─────────────────────────────────────────────────────────────
+// Modification Approved — guest notification
+// ─────────────────────────────────────────────────────────────
+
+interface ModificationApprovedEmailData {
+  guestEmail: string
+  guestName: string
+  referenceNumber: string
+  pickupDatetime: string
+  pickupLocation: string
+  dropoffLocation: string
+  vehicleType: string
+}
+
+export async function sendModificationApprovedEmail(data: ModificationApprovedEmailData) {
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '') ?? ''
+
+  const pickup = new Date(data.pickupDatetime).toLocaleString('en-US', {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+    hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Manila',
+  })
+
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${baseStyles}</style></head>
+<body>
+<div class="wrapper">
+  <div class="card">
+    <div class="header">
+      <h1>✅ Modification Approved</h1>
+      <p>Your booking changes have been approved</p>
+    </div>
+    <div class="body">
+      <p style="color:#94a3b8;margin:0 0 20px">Dear <strong style="color:#e2e8f0">${data.guestName}</strong>, your modification request has been <span class="badge badge-approved">Approved</span></p>
+
+      <div class="section">
+        <p class="label">Reference Number</p>
+        <p class="value">${data.referenceNumber}</p>
+      </div>
+
+      <div class="divider"></div>
+      <p style="color:#94a3b8;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin:0 0 12px">Updated Trip Details</p>
+
+      <div class="section">
+        <p class="label">Pickup Date/Time</p>
+        <p class="value">${pickup}</p>
+      </div>
+      <div class="section">
+        <p class="label">Pickup Location</p>
+        <p class="value">${data.pickupLocation}</p>
+      </div>
+      <div class="section">
+        <p class="label">Dropoff Location</p>
+        <p class="value">${data.dropoffLocation}</p>
+      </div>
+      <div class="section">
+        <p class="label">Vehicle</p>
+        <p class="value">${formatVehicleType(data.vehicleType)}</p>
+      </div>
+
+      <div class="divider"></div>
+
+      <div style="text-align:center;margin:24px 0">
+        <a href="${siteUrl}/book/status/${data.referenceNumber}" class="btn">View Booking Status →</a>
+      </div>
+    </div>
+    <div class="footer">
+      <p>© ${new Date().getFullYear()} FleetFlow Premium · Internal System</p>
+      <p>This is an automated message. Please do not reply directly to this email.</p>
+    </div>
+  </div>
+</div>
+</body></html>`
+
+  return await sendEmail(
+    data.guestEmail,
+    `✅ Modification Approved — Ref: ${data.referenceNumber}`,
+    html,
+  )
+}
+
+// ─────────────────────────────────────────────────────────────
+// Modification Rejected — guest notification
+// ─────────────────────────────────────────────────────────────
+
+interface ModificationRejectedEmailData {
+  guestEmail: string
+  guestName: string
+  referenceNumber: string
+  pickupDatetime: string
+  pickupLocation: string
+  dropoffLocation: string
+}
+
+export async function sendModificationRejectedEmail(data: ModificationRejectedEmailData) {
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '') ?? ''
+
+  const pickup = new Date(data.pickupDatetime).toLocaleString('en-US', {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+    hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Manila',
+  })
+
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${baseStyles}</style></head>
+<body>
+<div class="wrapper">
+  <div class="card">
+    <div class="header">
+      <h1>❌ Modification Not Approved</h1>
+      <p>Your modification request could not be accommodated</p>
+    </div>
+    <div class="body">
+      <p style="color:#94a3b8;margin:0 0 20px">Dear <strong style="color:#e2e8f0">${data.guestName}</strong>, unfortunately your modification request has been <span class="badge badge-rejected">Rejected</span></p>
+
+      <div class="section">
+        <p class="label">Reference Number</p>
+        <p class="value">${data.referenceNumber}</p>
+      </div>
+
+      <div class="divider"></div>
+      <p style="color:#94a3b8;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin:0 0 12px">Your Original Booking Remains</p>
+
+      <div class="section">
+        <p class="label">Pickup Date/Time</p>
+        <p class="value">${pickup}</p>
+      </div>
+      <div class="section">
+        <p class="label">Pickup Location</p>
+        <p class="value">${data.pickupLocation}</p>
+      </div>
+      <div class="section">
+        <p class="label">Dropoff Location</p>
+        <p class="value">${data.dropoffLocation}</p>
+      </div>
+
+      <div class="divider"></div>
+
+      <p style="color:#94a3b8;font-size:14px;text-align:center;margin:0 0 20px">If you have questions, please contact us directly.</p>
+
+      <div style="text-align:center;margin:24px 0">
+        <a href="${siteUrl}/book/status/${data.referenceNumber}" class="btn">View Booking Status →</a>
+      </div>
+    </div>
+    <div class="footer">
+      <p>© ${new Date().getFullYear()} FleetFlow Premium · Internal System</p>
+      <p>This is an automated message. Please do not reply directly to this email.</p>
+    </div>
+  </div>
+</div>
+</body></html>`
+
+  return await sendEmail(
+    data.guestEmail,
+    `❌ Modification Request Declined — Ref: ${data.referenceNumber}`,
+    html,
+  )
+}
+
+// ─────────────────────────────────────────────────────────────
+// Trip Completion Receipt — guest notification
+// ─────────────────────────────────────────────────────────────
+
+interface TripCompletionReceiptEmailData {
+  guestEmail: string
+  guestName: string
+  referenceNumber: string
+  pickupDatetime: string
+  dropoffDatetime: string | null
+  pickupLocation: string
+  dropoffLocation: string
+  vehicleType: string
+  vehiclePlate: string | null
+  vehicleModel: string | null
+  finalCostUsd: number | null
+  driverName: string | null
+}
+
+export async function sendTripCompletionReceiptEmail(data: TripCompletionReceiptEmailData) {
+  const pickup = new Date(data.pickupDatetime).toLocaleString('en-US', {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+    hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Manila',
+  })
+
+  const dropoff = data.dropoffDatetime
+    ? new Date(data.dropoffDatetime).toLocaleString('en-US', {
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+        hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Manila',
+      })
+    : null
+
+  const completedDate = new Date().toLocaleString('en-US', {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+    hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Manila',
+  })
+
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${baseStyles}</style></head>
+<body>
+<div class="wrapper">
+  <div class="card">
+    <div class="header">
+      <h1>🧾 Trip Receipt</h1>
+      <p>Thank you for choosing FleetFlow Premium</p>
+    </div>
+    <div class="body">
+      <p style="color:#94a3b8;margin:0 0 20px">Dear <strong style="color:#e2e8f0">${data.guestName}</strong>, your trip has been completed. Here is your receipt.</p>
+
+      <div class="section">
+        <p class="label">Reference Number</p>
+        <p class="value">${data.referenceNumber}</p>
+      </div>
+      <div class="section">
+        <p class="label">Trip Completed</p>
+        <p class="value">${completedDate}</p>
+      </div>
+
+      <div class="divider"></div>
+      <p style="color:#94a3b8;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin:0 0 12px">Trip Details</p>
+
+      <div class="section">
+        <p class="label">Pickup</p>
+        <p class="value">${pickup}</p>
+        <p style="color:#64748b;font-size:12px;margin:4px 0 0">${data.pickupLocation}</p>
+      </div>
+
+      ${dropoff ? `
+      <div class="section">
+        <p class="label">Dropoff</p>
+        <p class="value">${dropoff}</p>
+        <p style="color:#64748b;font-size:12px;margin:4px 0 0">${data.dropoffLocation}</p>
+      </div>` : `
+      <div class="section">
+        <p class="label">Dropoff Location</p>
+        <p class="value">${data.dropoffLocation}</p>
+      </div>`}
+
+      <div class="section">
+        <p class="label">Vehicle</p>
+        <p class="value">${formatVehicleType(data.vehicleType)}${data.vehicleModel ? ` — ${data.vehicleModel}` : ''}</p>
+        ${data.vehiclePlate ? `<p style="color:#64748b;font-size:12px;margin:4px 0 0">Plate: ${data.vehiclePlate}</p>` : ''}
+      </div>
+
+      ${data.driverName ? `
+      <div class="section">
+        <p class="label">Driver</p>
+        <p class="value">${data.driverName}</p>
+      </div>` : ''}
+
+      ${data.finalCostUsd != null ? `
+      <div class="divider"></div>
+      <div class="section" style="background:rgba(99,102,241,0.1);border-radius:8px;padding:16px;margin:0">
+        <p class="label">Total Amount</p>
+        <p style="font-size:28px;font-weight:700;color:#818cf8;margin:4px 0 0">$${data.finalCostUsd.toFixed(2)} <span style="font-size:14px;color:#64748b">USD</span></p>
+      </div>` : ''}
+
+      <div class="divider"></div>
+
+      <p style="color:#94a3b8;font-size:14px;text-align:center;margin:0">We hope you had an excellent experience. Thank you for traveling with FleetFlow Premium.</p>
+    </div>
+    <div class="footer">
+      <p>© ${new Date().getFullYear()} FleetFlow Premium · Internal System</p>
+      <p>This is an automated message. Please do not reply directly to this email.</p>
+    </div>
+  </div>
+</div>
+</body></html>`
+
+  return await sendEmail(
+    data.guestEmail,
+    `🧾 Trip Receipt — Ref: ${data.referenceNumber}`,
+    html,
+  )
+}
