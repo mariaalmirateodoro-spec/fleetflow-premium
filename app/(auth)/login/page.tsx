@@ -1,17 +1,27 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { Suspense, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Car, Eye, EyeOff, Loader2, Lock, Mail, Shield } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
-export default function LoginPage() {
+const AUTH_ERRORS: Record<string, string> = {
+  profile_missing: 'Your account profile could not be found. Please contact an administrator.',
+  account_deactivated: 'Your account has been deactivated. Please contact an administrator.',
+}
+
+function LoginForm() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const urlError = searchParams.get('error')
+
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+
+  const displayError = error || (urlError ? (AUTH_ERRORS[urlError] ?? urlError) : '')
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -102,26 +112,11 @@ export default function LoginPage() {
             </div>
 
             {/* Error */}
-            {error && (
+            {displayError && (
               <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 text-sm text-red-400 animate-slide-down">
-                {error}
+                {displayError}
               </div>
             )}
 
             {/* Submit */}
-            <button type="submit" disabled={loading} className="btn-primary w-full py-3 mt-2">
-              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-              {loading ? 'Signing in…' : 'Sign In'}
-            </button>
-          </form>
-
-        </div>
-
-        {/* Footer */}
-        <p className="text-center text-[11px] text-slate-600 mt-6">
-          © {new Date().getFullYear()} FleetFlow Premium · Internal System
-        </p>
-      </div>
-    </div>
-  )
-}
+            <button type="submit" disabled={loading} cla

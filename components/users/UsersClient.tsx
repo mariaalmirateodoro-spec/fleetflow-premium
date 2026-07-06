@@ -6,7 +6,6 @@ import { cn, getInitials, roleConfig, timeAgo } from '@/lib/utils'
 import { Badge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
-import { createClient } from '@/lib/supabase/client'
 import type { Profile, UserRole } from '@/types'
 
 interface Props {
@@ -31,28 +30,45 @@ export function UsersClient({ users: initialUsers, currentUser }: Props) {
 
   async function refresh() {
     setLoading(true)
-    const supabase = createClient()
-    const { data } = await supabase.from('profiles').select('*').order('created_at', { ascending: true })
-    if (data) setUsers(data)
+    const res = await fetch('/api/users')
+    if (res.ok) {
+      const body = await res.json()
+      if (body.data) setUsers(body.data)
+    }
     setLoading(false)
   }
 
   async function updateRole() {
     if (!editUser) return
     setLoading(true)
-    const supabase = createClient()
-    const { error } = await supabase.from('profiles').update({ role: newRole }).eq('id', editUser.id)
-    if (error) toast('Failed to update role', 'error')
-    else { toast(`${editUser.full_name}'s role updated to ${newRole}`, 'success'); setEditUser(null) }
+    const res = await fetch('/api/users', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: editUser.id, role: newRole }),
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      toast(body.error ?? 'Failed to update role', 'error')
+    } else {
+      toast(`${editUser.full_name}'s role updated to ${newRole}`, 'success')
+      setEditUser(null)
+    }
     await refresh()
     setLoading(false)
   }
 
   async function toggleActive(user: Profile) {
     if (user.id === currentUser.id) { toast("You can't deactivate yourself", 'warning'); return }
-    const supabase = createClient()
-    await supabase.from('profiles').update({ is_active: !user.is_active }).eq('id', user.id)
-    toast(`${user.full_name} ${!user.is_active ? 'activated' : 'deactivated'}`, 'success')
+    const res = await fetch('/api/users', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: user.id, is_active: !user.is_active }),
+    })
+    if (res.ok) {
+      toast(`${user.full_name} ${!user.is_active ? 'activated' : 'deactivated'}`, 'success')
+    } else {
+      toast('Failed to update user', 'error')
+    }
     await refresh()
   }
 
@@ -186,13 +202,4 @@ export function UsersClient({ users: initialUsers, currentUser }: Props) {
             </div>
             <div className="flex gap-2 justify-end pt-2 border-t border-white/8">
               <button onClick={() => setEditUser(null)} className="btn-secondary">Cancel</button>
-              <button onClick={updateRole} disabled={loading || newRole === editUser.role} className="btn-primary">
-                Update Role
-              </button>
-            </div>
-          </div>
-        </Modal>
-      )}
-    </>
-  )
-}
+         
