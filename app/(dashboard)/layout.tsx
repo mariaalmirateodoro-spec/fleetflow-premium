@@ -9,10 +9,17 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // Middleware handles unauthenticated users — if profile is still null here
   // (e.g. user exists in auth but profile row is missing), sign them out so the
   // middleware doesn't loop them back to /dashboard, then redirect to login.
+  const supabase = createClient()
+
   if (!profile) {
-    const supabase = createClient()
     await supabase.auth.signOut()
     redirect('/login?error=profile_missing')
+  }
+
+  // Block deactivated users: sign them out and redirect with a clear message.
+  if (!profile.is_active) {
+    await supabase.auth.signOut()
+    redirect('/login?error=account_deactivated')
   }
 
   return (
