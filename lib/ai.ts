@@ -58,13 +58,26 @@ export async function recommendSupplier(
     return undefined
   }
 
-  // Score = 60% rating + 40% price (lower is better)
+  // Scoring weights:
+  //   50% rating, 30% price (cheaper is better), 15% preferred-partner bonus,
+  //   ±5% budget fit (bonus if comfortably within budget, penalty if over).
+  // "Preferred" and "within budget" used to only appear in the human-readable
+  // reason text without actually affecting the ranking — fixed here so they
+  // really do influence which supplier wins.
   const maxRate = Math.max(...eligible.map((s) => s.base_rate_usd ?? 0))
   const scored = eligible.map((s) => {
     const priceScore = maxRate > 0 ? 1 - (s.base_rate_usd ?? 0) / maxRate : 0.5
     const ratingScore = s.rating / 5
-    const score = ratingScore * 0.6 + priceScore * 0.4
-    return { ...s, score }
+    const preferredBonus = s.is_preferred ? 0.15 : 0
+
+    let budgetAdjustment = 0
+    if (budget && s.base_rate_usd) {
+      if (s.base_rate_usd > budget) budgetAdjustment = -0.25 // over budget — penalize but don't exclude
+      else if (s.base_rate_usd <= budget * 0.8) budgetAdjustment = 0.05 // comfortably within budget
+    }
+
+    const score = ratingScore * 0.5 + priceScore * 0.3 + preferredBonus + budgetAdjustment
+    return { ...s, score, overBudget: !!(budget && s.base_rate_usd && s.base_rate_usd > budget) }
   })
 
   scored.sort((a, b) => b.score - a.score)
@@ -73,16 +86,17 @@ export async function recommendSupplier(
   const reasons: string[] = []
   if (best.is_preferred) reasons.push('preferred partner')
   if (best.rating >= 4.5) reasons.push(`top-rated at ${best.rating}★`)
-  if (budget && best.base_rate_usd && best.base_rate_usd < budget * 0.8) {
+  if (budget && best.base_rate_usd && best.base_rate_usd <= budget * 0.8) {
     reasons.push('well within budget')
   }
+  if (best.overBudget) reasons.push('⚠ over the stated budget — no eligible supplier fit within it')
 
   return {
     supplierId: best.id,
     supplierName: best.company_name,
     reason: reasons.length > 0
       ? `Best match: ${reasons.join(', ')}. Handles ${vehicleType} vehicles with ${best.total_bookings} completed trips.`
-      : `Highest overall score balancing rating (${best.rating}★) and pricing.`,
+      : `Highest overall score balancing rating (${best.rating}★), pricing, and budget fit.`,
   }
 }
 

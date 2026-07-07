@@ -88,28 +88,54 @@ export function BookingModal({ open, onClose, booking, suppliers, profile, onSuc
     setAiLoading(false)
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    setLoading(true)
-
-    const supabase = createClient()
-    const payload = {
-      guest_name: form.guest_name,
-      guest_nationality: form.guest_nationality,
+  function buildPayload(isDraft: boolean) {
+    return {
+      guest_name: form.guest_name || null,
+      guest_nationality: form.guest_nationality || null,
       guest_count: form.guest_count,
       guest_phone: form.guest_phone || null,
       guest_email: form.guest_email || null,
       guest_line_id: form.guest_line_id || null,
-      pickup_datetime: new Date(form.pickup_datetime).toISOString(),
+      pickup_datetime: form.pickup_datetime ? new Date(form.pickup_datetime).toISOString() : null,
       dropoff_datetime: form.dropoff_datetime ? new Date(form.dropoff_datetime).toISOString() : null,
-      pickup_location: form.pickup_location,
-      dropoff_location: form.dropoff_location,
+      pickup_location: form.pickup_location || null,
+      dropoff_location: form.dropoff_location || null,
       vehicle_type: form.vehicle_type,
       driver_required: form.driver_required,
       budget_usd: form.budget_usd ?? null,
       notes: form.notes || null,
       special_requests: form.special_requests || null,
+      is_draft: isDraft,
     }
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setLoading(true)
+
+    const supabase = createClient()
+    const payload = buildPayload(false)
+
+    let error
+    if (isEdit) {
+      ;({ error } = await supabase.from('bookings').update(payload).eq('id', booking!.id))
+    } else {
+      ;({ error } = await supabase.from('bookings').insert({ ...payload, created_by: profile.id }))
+    }
+
+    setLoading(false)
+    if (!error) {
+      onSuccess()
+    }
+  }
+
+  // "Save as Draft" bypasses the form's native required-field validation
+  // (button is type="button", so it never triggers HTML5 constraint checks)
+  // and is allowed to persist a booking that's still missing information.
+  async function handleSaveDraft() {
+    setLoading(true)
+    const supabase = createClient()
+    const payload = buildPayload(true)
 
     let error
     if (isEdit) {
@@ -125,7 +151,13 @@ export function BookingModal({ open, onClose, booking, suppliers, profile, onSuc
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={isEdit ? 'Edit Booking' : 'New Booking'} subtitle="Fill in the guest transport details" size="2xl">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={isEdit ? (booking?.is_draft ? 'Edit Draft Booking' : 'Edit Booking') : 'New Booking'}
+      subtitle={booking?.is_draft ? 'This booking is still a draft — fill in the rest, or keep saving as draft.' : 'Fill in the guest transport details'}
+      size="2xl"
+    >
       <form onSubmit={handleSubmit} className="space-y-4">
         {/* Guest info */}
         <div className="grid grid-cols-2 gap-3">
@@ -285,6 +317,10 @@ export function BookingModal({ open, onClose, booking, suppliers, profile, onSuc
         {/* Actions */}
         <div className="flex justify-end gap-2 pt-2 border-t border-white/8">
           <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+          <button type="button" onClick={handleSaveDraft} disabled={loading} className="btn-secondary">
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+            Save as Draft
+          </button>
           <button type="submit" disabled={loading} className="btn-primary">
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
             {loading ? 'Saving…' : isEdit ? 'Update Booking' : 'Create Booking'}

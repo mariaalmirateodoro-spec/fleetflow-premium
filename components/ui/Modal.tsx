@@ -52,13 +52,13 @@ export function Modal({ open, onClose, title, subtitle, children, size = 'md', c
     >
       <div
         className={cn(
-          'w-full glass rounded-2xl shadow-2xl animate-slide-up border border-white/10',
+          'w-full glass rounded-2xl shadow-2xl animate-slide-up border border-white/10 max-h-[90vh] flex flex-col',
           sizes[size],
           className
         )}
       >
         {/* Header */}
-        <div className="flex items-start justify-between p-6 border-b border-white/8">
+        <div className="flex items-start justify-between p-6 border-b border-white/8 shrink-0">
           <div>
             <h2 className="text-lg font-semibold text-white">{title}</h2>
             {subtitle && <p className="text-sm text-slate-400 mt-0.5">{subtitle}</p>}
@@ -72,7 +72,7 @@ export function Modal({ open, onClose, title, subtitle, children, size = 'md', c
         </div>
 
         {/* Body */}
-        <div className="p-6">
+        <div className="p-6 overflow-y-auto">
           {children}
         </div>
       </div>

@@ -66,38 +66,48 @@ export async function POST(request: NextRequest) {
     )
 
     const body = await request.json()
+    const isDraft = body.is_draft === true
 
-    // Basic validation
-    const required = ['guest_name', 'guest_nationality', 'guest_count', 'pickup_location', 'dropoff_location', 'pickup_datetime', 'vehicle_type', 'guest_phone', 'guest_email']
-    for (const field of required) {
-      if (!body[field]) {
-        return NextResponse.json({ error: `Missing required field: ${field}` }, { status: 400 })
+    // Full submissions must have the essentials; drafts can be missing anything —
+    // that's the whole point of "save & finish later".
+    if (!isDraft) {
+      const required = ['guest_name', 'guest_nationality', 'guest_count', 'pickup_location', 'dropoff_location', 'pickup_datetime', 'vehicle_type', 'guest_phone', 'guest_email']
+      for (const field of required) {
+        if (!body[field]) {
+          return NextResponse.json({ error: `Missing required field: ${field}` }, { status: 400 })
+        }
       }
     }
 
     const { data, error } = await anonClient
       .from('bookings')
       .insert({
-        guest_name: body.guest_name,
-        guest_nationality: body.guest_nationality,
-        guest_count: Number(body.guest_count),
-        guest_phone: body.guest_phone,
-        guest_email: body.guest_email,
+        guest_name: body.guest_name || null,
+        guest_nationality: body.guest_nationality || null,
+        guest_count: body.guest_count ? Number(body.guest_count) : 1,
+        guest_phone: body.guest_phone || null,
+        guest_email: body.guest_email || null,
         guest_line_id: body.guest_line_id ?? null,
-        pickup_location: body.pickup_location,
-        dropoff_location: body.dropoff_location,
-        pickup_datetime: body.pickup_datetime,
+        pickup_location: body.pickup_location || null,
+        dropoff_location: body.dropoff_location || null,
+        pickup_datetime: body.pickup_datetime || null,
         dropoff_datetime: body.dropoff_datetime ?? null,
-        vehicle_type: body.vehicle_type,
+        vehicle_type: body.vehicle_type || 'sedan',
         driver_required: body.driver_required ?? true,
         special_requests: body.special_requests ?? null,
         status: 'pending',
+        is_draft: isDraft,
         created_by: null, // guest booking — no auth user
       })
       .select('id, reference_number')
       .single()
 
     if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+
+    // Drafts are just a save point — no staff notification, no confirmation email yet.
+    if (isDraft) {
+      return NextResponse.json({ reference_number: data.reference_number, is_draft: true }, { status: 201 })
+    }
 
     // Notify all admin/manager/staff users about the new guest booking
     const { data: staff } = await adminClient

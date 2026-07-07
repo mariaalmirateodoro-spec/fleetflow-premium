@@ -86,6 +86,7 @@ export interface Booking {
   cancellation_reason: string | null
   created_at: string
   updated_at: string
+  is_draft: boolean
   // Modification request fields
   modification_status: string | null
   modification_pickup_datetime: string | null

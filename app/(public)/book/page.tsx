@@ -58,6 +58,65 @@ function BookingForm() {
   const set = (key: string, value: string | boolean) =>
     setForm((f) => ({ ...f, [key]: value }))
 
+  const [draftLoading, setDraftLoading] = useState(false)
+
+  function buildBody() {
+    const pickup_datetime = form.pickup_date && form.pickup_time
+      ? new Date(`${form.pickup_date}T${form.pickup_time}`).toISOString()
+      : null
+
+    let dropoff_datetime: string | null = null
+    if (form.dropoff_date) {
+      dropoff_datetime = new Date(`${form.dropoff_date}T12:00`).toISOString()
+    } else if (form.rental_duration && pickup_datetime) {
+      const durationMs = parseInt(form.rental_duration) *
+        (form.rental_duration_unit === 'hours' ? 3_600_000 : 86_400_000)
+      dropoff_datetime = new Date(new Date(pickup_datetime).getTime() + durationMs).toISOString()
+    }
+
+    const durationNote = form.rental_duration
+      ? `Rental duration: ${form.rental_duration} ${form.rental_duration_unit}`
+      : ''
+    const specialRequests = [durationNote, form.special_requests].filter(Boolean).join('\n') || null
+
+    return {
+      guest_name: form.guest_name,
+      guest_nationality: form.guest_nationality,
+      guest_count: form.guest_count ? parseInt(form.guest_count) : undefined,
+      guest_phone: form.guest_phone,
+      guest_email: form.guest_email,
+      guest_line_id: form.guest_line_id || null,
+      pickup_location: form.pickup_location,
+      dropoff_location: form.dropoff_location,
+      pickup_datetime,
+      dropoff_datetime,
+      vehicle_type: form.vehicle_type,
+      driver_required: form.driver_required,
+      special_requests: specialRequests,
+    }
+  }
+
+  // "Save & finish later" — a button (type="button"), so it never triggers the
+  // form's native required-field validation. The API accepts a partial payload
+  // when is_draft is true.
+  const handleSaveDraft = async () => {
+    setDraftLoading(true)
+    setError('')
+    try {
+      const res = await fetch('/api/public/bookings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...buildBody(), is_draft: true }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Something went wrong')
+      router.push(`/book/confirmation?ref=${json.reference_number}&draft=1`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.')
+      setDraftLoading(false)
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
@@ -388,28 +447,45 @@ function BookingForm() {
         )}
 
         {/* Submit */}
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full py-3.5 rounded-xl bg-gradient-fleet text-white font-semibold text-base shadow-fleet hover:shadow-fleet-lg transition-all hover:scale-[1.01] disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center justify-center gap-2"
-        >
-          {loading ? (
-            <>
-              <svg className="w-5 h-5 animate-spin" viewBox="0 0 24 24" fill="none">
+        <div className="flex flex-col sm:flex-row gap-3">
+          <button
+            type="button"
+            onClick={handleSaveDraft}
+            disabled={loading || draftLoading}
+            className="sm:w-auto w-full py-3.5 px-6 rounded-xl border border-white/15 bg-white/5 text-slate-200 font-semibold text-sm hover:bg-white/10 transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          >
+            {draftLoading ? (
+              <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
               </svg>
-              Submitting request…
-            </>
-          ) : (
-            <>
-              Submit booking request
-              <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
-                <path fillRule="evenodd" d="M3 10a.75.75 0 01.75-.75h10.638L10.23 5.29a.75.75 0 111.04-1.08l5.5 5.25a.75.75 0 010 1.08l-5.5 5.25a.75.75 0 11-1.04-1.08l4.158-3.96H3.75A.75.75 0 013 10z" clipRule="evenodd" />
-              </svg>
-            </>
-          )}
-        </button>
+            ) : '📝'}
+            Save & finish later
+          </button>
+
+          <button
+            type="submit"
+            disabled={loading || draftLoading}
+            className="flex-1 py-3.5 rounded-xl bg-gradient-fleet text-white font-semibold text-base shadow-fleet hover:shadow-fleet-lg transition-all hover:scale-[1.01] disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center justify-center gap-2"
+          >
+            {loading ? (
+              <>
+                <svg className="w-5 h-5 animate-spin" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                Submitting request…
+              </>
+            ) : (
+              <>
+                Submit booking request
+                <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+                  <path fillRule="evenodd" d="M3 10a.75.75 0 01.75-.75h10.638L10.23 5.29a.75.75 0 111.04-1.08l5.5 5.25a.75.75 0 010 1.08l-5.5 5.25a.75.75 0 11-1.04-1.08l4.158-3.96H3.75A.75.75 0 013 10z" clipRule="evenodd" />
+                </svg>
+              </>
+            )}
+          </button>
+        </div>
 
         <p className="text-center text-slate-500 text-xs">
           By submitting, you agree to our{' '}

@@ -12,7 +12,7 @@ function createAdminClient() {
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { ref: string } }
+  { params }: { params: { id: string } }
 ) {
   const body = await request.json()
   const { pickup_datetime, pickup_location, dropoff_location, notes } = body
@@ -28,7 +28,7 @@ export async function POST(
   const { data: booking, error: fetchError } = await admin
     .from('bookings')
     .select('id, guest_name, guest_email, reference_number, pickup_datetime, pickup_location, dropoff_location, status, modification_status')
-    .eq('reference_number', params.ref)
+    .eq('reference_number', params.id)
     .single()
 
   if (fetchError || !booking) {

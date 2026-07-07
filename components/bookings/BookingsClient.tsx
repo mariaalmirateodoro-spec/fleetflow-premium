@@ -42,6 +42,7 @@ export function BookingsClient({ initialBookings, suppliers, drivers, profile }:
   const [cancelLoading, setCancelLoading] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
   const [driverNeededFilter, setDriverNeededFilter] = useState(false)
+  const [showDrafts, setShowDrafts] = useState(false)
   const [showExportMenu, setShowExportMenu] = useState(false)
   const exportMenuRef = useRef<HTMLDivElement>(null)
 
@@ -57,21 +58,28 @@ export function BookingsClient({ initialBookings, suppliers, drivers, profile }:
   }, [])
 
   // Reset to page 1 whenever any filter changes
-  useEffect(() => { setCurrentPage(1) }, [search, statusFilter, vehicleFilter, dateFrom, dateTo, driverNeededFilter])
+  useEffect(() => { setCurrentPage(1) }, [search, statusFilter, vehicleFilter, dateFrom, dateTo, driverNeededFilter, showDrafts])
 
   const filtered = useMemo(() => {
     const fromMs = dateFrom ? new Date(dateFrom).getTime() : null
     const toMs = dateTo ? new Date(dateTo + 'T23:59:59').getTime() : null
     return bookings.filter((b) => {
+      // Drafts live in their own view — never mixed in with real bookings.
+      if (showDrafts) {
+        if (!b.is_draft) return false
+      } else if (b.is_draft) {
+        return false
+      }
+
       const q = search.toLowerCase()
       const matchesSearch =
         !q ||
-        b.guest_name.toLowerCase().includes(q) ||
+        (b.guest_name ?? '').toLowerCase().includes(q) ||
         b.reference_number.toLowerCase().includes(q) ||
-        b.pickup_location.toLowerCase().includes(q) ||
-        b.dropoff_location.toLowerCase().includes(q) ||
-        b.guest_nationality.toLowerCase().includes(q)
-      const matchesStatus = statusFilter === 'all' || b.status === statusFilter
+        (b.pickup_location ?? '').toLowerCase().includes(q) ||
+        (b.dropoff_location ?? '').toLowerCase().includes(q) ||
+        (b.guest_nationality ?? '').toLowerCase().includes(q)
+      const matchesStatus = showDrafts || statusFilter === 'all' || b.status === statusFilter
       const matchesVehicle = vehicleFilter === 'all' || b.vehicle_type === vehicleFilter
       const pickupMs = b.pickup_datetime ? new Date(b.pickup_datetime).getTime() : null
       const matchesFrom = !fromMs || (pickupMs != null && pickupMs >= fromMs)
@@ -80,7 +88,9 @@ export function BookingsClient({ initialBookings, suppliers, drivers, profile }:
       const matchesDriverNeeded = !driverNeededFilter || (b.driver_required && !b.driver_id)
       return matchesSearch && matchesStatus && matchesVehicle && matchesFrom && matchesTo && matchesDriverNeeded
     })
-  }, [bookings, search, statusFilter, vehicleFilter, dateFrom, dateTo, driverNeededFilter])
+  }, [bookings, search, statusFilter, vehicleFilter, dateFrom, dateTo, driverNeededFilter, showDrafts])
+
+  const draftCount = useMemo(() => bookings.filter((b) => b.is_draft).length, [bookings])
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   const paginated = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
@@ -97,6 +107,12 @@ export function BookingsClient({ initialBookings, suppliers, drivers, profile }:
   }
 
   function handleRowClick(booking: Booking) {
+    // Drafts aren't real bookings yet — open straight into the edit form
+    // instead of the detail/approval view.
+    if (booking.is_draft) {
+      handleEdit(booking)
+      return
+    }
     setSelectedBooking(booking)
     setShowDetail(true)
   }
@@ -328,6 +344,21 @@ export function BookingsClient({ initialBookings, suppliers, drivers, profile }:
             {VEHICLES.map((v) => <option key={v} value={v}>{vehicleLabels[v]}</option>)}
           </select>
 
+          {/* Drafts toggle */}
+          <button
+            onClick={() => setShowDrafts((v) => !v)}
+            className={cn(
+              'flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-medium transition-all',
+              showDrafts
+                ? 'bg-fleet-500/15 border-fleet-500/40 text-fleet-300'
+                : 'bg-white/5 border-white/10 text-slate-400 hover:text-slate-200 hover:bg-white/8'
+            )}
+            title="Show unfinished draft bookings"
+          >
+            📝 Drafts{draftCount > 0 ? ` (${draftCount})` : ''}
+            {showDrafts && <span className="ml-0.5 text-fleet-400/70">✕</span>}
+          </button>
+
           {/* Driver needed quick-filter */}
           <button
             onClick={() => setDriverNeededFilter((v) => !v)}
@@ -386,7 +417,7 @@ export function BookingsClient({ initialBookings, suppliers, drivers, profile }:
       {/* Stats bar */}
       <div className="flex gap-3 mb-4 text-xs">
         {STATUSES.map((s) => {
-          const count = bookings.filter((b) => b.status === s).length
+          const count = bookings.filter((b) => b.status === s && !b.is_draft).length
           return (
             <button
               key={s}
@@ -453,13 +484,13 @@ export function BookingsClient({ initialBookings, suppliers, drivers, profile }:
                       </td>
                       <td className="px-4 py-3.5">
                         <div>
-                          <p className="font-medium text-slate-200 text-xs">{booking.guest_name}</p>
-                          <p className="text-slate-500 text-[11px]">{booking.guest_nationality} · {booking.guest_count} guest{booking.guest_count > 1 ? 's' : ''}</p>
+                          <p className="font-medium text-slate-200 text-xs">{booking.guest_name || <span className="text-slate-600 italic">(no name yet)</span>}</p>
+                          <p className="text-slate-500 text-[11px]">{booking.guest_nationality ?? '—'} · {booking.guest_count} guest{booking.guest_count > 1 ? 's' : ''}</p>
                         </div>
                       </td>
                       <td className="px-4 py-3.5 hidden md:table-cell">
-                        <p className="text-xs text-slate-400 max-w-[160px] truncate">{booking.pickup_location}</p>
-                        <p className="text-[11px] text-slate-600 truncate">→ {booking.dropoff_location}</p>
+                        <p className="text-xs text-slate-400 max-w-[160px] truncate">{booking.pickup_location || '—'}</p>
+                        <p className="text-[11px] text-slate-600 truncate">→ {booking.dropoff_location || '—'}</p>
                       </td>
                       <td className="px-4 py-3.5 hidden lg:table-cell">
                         <span className="text-xs text-slate-400">{vehicleLabels[booking.vehicle_type]}</span>
@@ -470,13 +501,15 @@ export function BookingsClient({ initialBookings, suppliers, drivers, profile }:
                         )}
                       </td>
                       <td className="px-4 py-3.5 hidden xl:table-cell text-xs text-slate-400">
-                        {formatDateTime(booking.pickup_datetime)}
+                        {booking.pickup_datetime ? formatDateTime(booking.pickup_datetime) : '—'}
                       </td>
                       <td className="px-4 py-3.5 text-xs text-slate-300 font-medium">
                         {formatCurrency(booking.final_cost_usd ?? booking.budget_usd)}
                       </td>
                       <td className="px-4 py-3.5">
-                        <StatusBadge status={booking.status} />
+                        {booking.is_draft
+                          ? <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-500/15 text-slate-400 border border-slate-500/30">📝 Draft</span>
+                          : <StatusBadge status={booking.status} />}
                       </td>
                       <td className="px-4 py-3.5">
                         <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>

@@ -5,6 +5,7 @@ import type { Booking, BookingStatus } from '@/types'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import ModificationRequestModal from '@/components/bookings/ModificationRequestModal'
+import { DraftResumeForm } from '@/components/bookings/DraftResumeForm'
 
 function createAdminClient() {
   return createSupabaseClient(
@@ -173,6 +174,11 @@ export default async function BookingStatusPage({
     .single()
 
   if (error || !booking) notFound()
+
+  // Drafts aren't real submissions yet — show the resume/edit form instead of a status timeline.
+  if (booking.is_draft) {
+    return <DraftResumeForm booking={booking as Booking} />
+  }
 
   // Use admin client to bypass RLS for drivers + approvals (anon key can't read these tables)
   const admin = createAdminClient()
