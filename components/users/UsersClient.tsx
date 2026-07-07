@@ -206,4 +206,14 @@ export function UsersClient({ users: initialUsers, currentUser }: Props) {
             </div>
             <div className="flex gap-2 justify-end pt-2 border-t border-white/8">
               <button onClick={() => setEditUser(null)} className="btn-secondary">Cancel</button>
+              <button onClick={updateRole} disabled={loading || newRole === editUser.role} className="btn-primary">
+                Update Role
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </>
+  )
+}
          
