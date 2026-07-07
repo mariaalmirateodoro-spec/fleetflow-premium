@@ -19,9 +19,14 @@ export default async function ApprovalsPage() {
     .in('status', ['quoted', 'pending'])
     .order('created_at', { ascending: true })
 
+  // Embeds by column name (reviewer_id), not by guessing the generated FK
+  // constraint name — the approvals table only has reviewer_id (no
+  // approved_by column exists), so the old constraint-name reference here
+  // never matched anything and this query silently returned nothing every
+  // time, even when approvals existed.
   const { data: recentApprovals } = await supabase
     .from('approvals')
-    .select('*, profiles!approvals_approved_by_fkey(full_name), bookings(reference_number, guest_name)')
+    .select('*, profiles!reviewer_id(full_name), bookings(reference_number, guest_name)')
     .order('created_at', { ascending: false })
     .limit(10)
 

@@ -98,6 +98,7 @@ export interface Booking {
   profiles?: Profile
   suppliers?: Supplier
   drivers?: Pick<Driver, 'id' | 'full_name' | 'phone' | 'license_number'>
+  feedback?: { rating: number; comment: string | null } | { rating: number; comment: string | null }[]
 }
 
 export interface Quote {

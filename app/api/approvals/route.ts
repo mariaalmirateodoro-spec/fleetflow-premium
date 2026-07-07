@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
   const bookingId = request.nextUrl.searchParams.get('booking_id')
   let query = supabase
     .from('approvals')
-    .select('*, profiles!approvals_approved_by_fkey(full_name)')
+    .select('*, profiles!reviewer_id(full_name)')
     .order('created_at', { ascending: false })
 
   if (bookingId) query = query.eq('booking_id', bookingId)
@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
   // Create approval record
   const { data: approval, error: approvalError } = await supabase
     .from('approvals')
-    .insert({ booking_id, action, comments, approved_by: user.id })
+    .insert({ booking_id, action, comments, reviewer_id: user.id })
     .select()
     .single()
 

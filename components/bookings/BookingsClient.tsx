@@ -100,7 +100,7 @@ export function BookingsClient({ initialBookings, suppliers, drivers, profile }:
     const supabase = createClient()
     const { data } = await supabase
       .from('bookings')
-      .select('*, profiles!bookings_created_by_fkey(full_name), suppliers(company_name), drivers(id,full_name,phone,license_number)')
+      .select('*, profiles!bookings_created_by_fkey(full_name), suppliers(company_name), drivers(id,full_name,phone,license_number), feedback(rating,comment)')
       .order('created_at', { ascending: false })
     if (data) setBookings(data)
     setLoading(false)
@@ -231,39 +231,117 @@ export function BookingsClient({ initialBookings, suppliers, drivers, profile }:
   }
 
   async function exportXLSX() {
-    // Dynamic import so xlsx is only loaded on demand
-    const XLSX = await import('xlsx')
+    // Dynamic import so exceljs is only loaded on demand. Switched from the
+    // plain "xlsx" package to exceljs — the old package silently ignores any
+    // style you set on a cell (no colors, no bold, no borders), which is why
+    // past exports looked completely plain. exceljs actually writes styling.
+    const ExcelJS = (await import('exceljs')).default
     const date = new Date().toISOString().slice(0, 10)
 
-    const rows = filtered.map((b) => {
+    const FLEET = 'FF4F46E5'
+    const WHITE = 'FFFFFFFF'
+    const LIGHT = 'FFEEF2FF'
+    const GOLD_HEADER = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: FLEET } }
+    const thinBorder = {
+      top: { style: 'thin' as const, color: { argb: 'FFD1D5DB' } },
+      bottom: { style: 'thin' as const, color: { argb: 'FFD1D5DB' } },
+      left: { style: 'thin' as const, color: { argb: 'FFD1D5DB' } },
+      right: { style: 'thin' as const, color: { argb: 'FFD1D5DB' } },
+    }
+    const statusColors: Record<string, string> = {
+      completed: 'FF15803D', approved: 'FF2563EB', quoted: 'FF6B7280',
+      pending: 'FFB45309', cancelled: 'FFB91C1C',
+    }
+
+    const wb = new ExcelJS.Workbook()
+    const ws = wb.addWorksheet('Bookings', { views: [{ state: 'frozen', ySplit: 1, showGridLines: false }] })
+
+    const BODY_SIZE = 13
+    const HEADER_SIZE = 14
+
+    const columns: { header: string; key: string; width: number }[] = [
+      { header: 'Reference', key: 'reference', width: 16 },
+      { header: 'Guest Name', key: 'guest', width: 20 },
+      { header: 'Nationality', key: 'nationality', width: 16 },
+      { header: 'Guests', key: 'guests', width: 10 },
+      { header: 'Vehicle', key: 'vehicle', width: 13 },
+      { header: 'Driver Required', key: 'driverRequired', width: 15 },
+      { header: 'Assigned Driver', key: 'driver', width: 20 },
+      { header: 'Pickup Location', key: 'pickupLoc', width: 36 },
+      { header: 'Dropoff Location', key: 'dropoffLoc', width: 36 },
+      { header: 'Pickup Date/Time', key: 'pickupDt', width: 20 },
+      { header: 'Dropoff Date/Time', key: 'dropoffDt', width: 20 },
+      { header: 'Budget (USD)', key: 'budget', width: 15 },
+      { header: 'Final Cost (USD)', key: 'cost', width: 16 },
+      { header: 'Supplier', key: 'supplier', width: 24 },
+      { header: 'Status', key: 'status', width: 13 },
+      { header: 'Special Requests', key: 'requests', width: 32 },
+      { header: 'Cancellation Reason', key: 'cancelReason', width: 28 },
+      { header: 'Created At', key: 'createdAt', width: 20 },
+    ]
+    ws.columns = columns
+
+    const headerRow = ws.getRow(1)
+    headerRow.eachCell((cell) => {
+      cell.font = { bold: true, color: { argb: WHITE }, size: HEADER_SIZE }
+      cell.fill = GOLD_HEADER
+      cell.alignment = { horizontal: 'center', vertical: 'middle' }
+      cell.border = thinBorder
+    })
+    headerRow.height = 22
+
+    filtered.forEach((b, i) => {
       const supplier = b.suppliers as { company_name?: string } | undefined
       const driver = b.drivers as { full_name?: string } | undefined
-      return {
-        Reference: b.reference_number,
-        'Guest Name': b.guest_name,
-        Nationality: b.guest_nationality,
-        Guests: b.guest_count,
-        Vehicle: vehicleLabels[b.vehicle_type],
-        'Driver Required': b.driver_required ? 'Yes' : 'No',
-        'Assigned Driver': driver?.full_name ?? '',
-        'Pickup Location': b.pickup_location,
-        'Dropoff Location': b.dropoff_location,
-        'Pickup Date/Time': b.pickup_datetime ? formatDateTime(b.pickup_datetime) : '',
-        'Dropoff Date/Time': b.dropoff_datetime ? formatDateTime(b.dropoff_datetime) : '',
-        'Budget (USD)': b.budget_usd ?? '',
-        'Final Cost (USD)': b.final_cost_usd ?? '',
-        Supplier: supplier?.company_name ?? '',
-        Status: b.status,
-        'Special Requests': b.special_requests ?? '',
-        'Cancellation Reason': b.cancellation_reason ?? '',
-        'Created At': b.created_at ? formatDateTime(b.created_at) : '',
-      }
+      const row = ws.addRow({
+        reference: b.reference_number,
+        guest: b.guest_name,
+        nationality: b.guest_nationality,
+        guests: b.guest_count,
+        vehicle: vehicleLabels[b.vehicle_type],
+        driverRequired: b.driver_required ? 'Yes' : 'No',
+        driver: driver?.full_name ?? '',
+        pickupLoc: b.pickup_location,
+        dropoffLoc: b.dropoff_location,
+        pickupDt: b.pickup_datetime ? new Date(b.pickup_datetime) : null,
+        dropoffDt: b.dropoff_datetime ? new Date(b.dropoff_datetime) : null,
+        budget: b.budget_usd ?? null,
+        cost: b.final_cost_usd ?? null,
+        supplier: supplier?.company_name ?? '',
+        status: b.status.charAt(0).toUpperCase() + b.status.slice(1),
+        requests: b.special_requests ?? '',
+        cancelReason: b.cancellation_reason ?? '',
+        createdAt: b.created_at ? new Date(b.created_at) : null,
+      })
+
+      row.getCell('pickupDt').numFmt = 'mmm d, yyyy h:mm AM/PM'
+      row.getCell('dropoffDt').numFmt = 'mmm d, yyyy h:mm AM/PM'
+      row.getCell('createdAt').numFmt = 'mmm d, yyyy h:mm AM/PM'
+      row.getCell('budget').numFmt = '$#,##0;($#,##0);"-"'
+      row.getCell('cost').numFmt = '$#,##0;($#,##0);"-"'
+
+      const statusCell = row.getCell('status')
+      statusCell.font = { bold: true, size: BODY_SIZE, color: { argb: statusColors[b.status] ?? 'FF6B7280' } }
+
+      const fillColor = i % 2 === 0 ? LIGHT : WHITE
+      row.height = 20
+      row.eachCell({ includeEmpty: true }, (cell) => {
+        cell.border = thinBorder
+        cell.font = { ...(cell.font ?? {}), size: BODY_SIZE }
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fillColor } }
+      })
     })
 
-    const ws = XLSX.utils.json_to_sheet(rows)
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Bookings')
-    XLSX.writeFile(wb, `bookings-${date}.xlsx`)
+    ws.autoFilter = { from: 'A1', to: `R${filtered.length + 1}` }
+
+    const buffer = await wb.xlsx.writeBuffer()
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `bookings-${date}.xlsx`
+    a.click()
+    URL.revokeObjectURL(url)
   }
 
   const canCreate = ['admin', 'staff', 'manager'].includes(profile.role)
@@ -507,9 +585,22 @@ export function BookingsClient({ initialBookings, suppliers, drivers, profile }:
                         {formatCurrency(booking.final_cost_usd ?? booking.budget_usd)}
                       </td>
                       <td className="px-4 py-3.5">
-                        {booking.is_draft
-                          ? <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-500/15 text-slate-400 border border-slate-500/30">📝 Draft</span>
-                          : <StatusBadge status={booking.status} />}
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {booking.is_draft
+                            ? <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-500/15 text-slate-400 border border-slate-500/30">📝 Draft</span>
+                            : <StatusBadge status={booking.status} />}
+                          {(() => {
+                            const fb = Array.isArray(booking.feedback) ? booking.feedback[0] : booking.feedback
+                            return fb ? (
+                              <span
+                                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/30"
+                                title={fb.comment ?? undefined}
+                              >
+                                ⭐ {fb.rating}
+                              </span>
+                            ) : null
+                          })()}
+                        </div>
                       </td>
                       <td className="px-4 py-3.5">
                         <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>

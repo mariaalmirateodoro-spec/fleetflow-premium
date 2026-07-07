@@ -21,11 +21,24 @@ interface Props {
   booking: Booking
 }
 
+// Same fix as BookingModal.tsx: read local wall-clock components off the
+// Date object instead of slicing the raw UTC ISO string. The old version
+// pulled UTC digits directly, so saving the draft again (even untouched)
+// re-interpreted those UTC digits as local time and shifted the real pickup
+// time by the guest's timezone offset every time.
 function toDateInput(iso: string | null) {
-  return iso ? iso.slice(0, 10) : ''
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return ''
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 function toTimeInput(iso: string | null) {
-  return iso ? new Date(iso).toISOString().slice(11, 16) : '08:00'
+  if (!iso) return '08:00'
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return '08:00'
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
 export function DraftResumeForm({ booking }: Props) {

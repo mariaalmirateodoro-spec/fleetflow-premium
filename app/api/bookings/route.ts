@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { notifyManagers } from '@/lib/notifications'
+import { logAudit, adminClient } from '@/lib/audit'
 
 export async function GET(request: NextRequest) {
   try {
@@ -53,6 +54,15 @@ export async function POST(request: NextRequest) {
       `New booking ${data.reference_number} for ${data.guest_name} requires review.`,
       data.id
     )
+
+    const { data: profile } = await supabase.from('profiles').select('full_name').eq('id', user.id).single()
+    await logAudit(adminClient(), {
+      bookingId: data.id,
+      actorId: user.id,
+      actorName: profile?.full_name || user.email || 'Unknown',
+      action: 'booking_created',
+      note: `Created booking ${data.reference_number} for ${data.guest_name}`,
+    })
 
     return NextResponse.json({ data }, { status: 201 })
   } catch {

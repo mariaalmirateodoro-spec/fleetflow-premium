@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
-import { sendModificationApprovedEmail } from '@/lib/email'
+import { logAudit } from '@/lib/audit'
 
 function createAdminClient() {
   return createSupabaseClient(
@@ -22,7 +22,7 @@ export async function POST(
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('role')
+    .select('role, full_name')
     .eq('id', user.id)
     .single()
 
@@ -81,22 +81,13 @@ export async function POST(
     return NextResponse.json({ error: updateError.message }, { status: 500 })
   }
 
-  // Email the guest
-  if (booking.guest_email) {
-    try {
-      await sendModificationApprovedEmail({
-        guestEmail: booking.guest_email,
-        guestName: booking.guest_name,
-        referenceNumber: booking.reference_number,
-        pickupDatetime: (updated.pickup_datetime as string) ?? booking.pickup_datetime,
-        pickupLocation: (updated.pickup_location as string) ?? booking.pickup_location,
-        dropoffLocation: (updated.dropoff_location as string) ?? booking.dropoff_location,
-        vehicleType: booking.vehicle_type,
-      })
-    } catch (err) {
-      console.error('[modification/approve] email error:', err)
-    }
-  }
+  await logAudit(admin, {
+    bookingId: params.id,
+    actorId: user.id,
+    actorName: profile?.full_name || user.email || 'Unknown',
+    action: 'modification_approved',
+    note: booking.modification_notes ?? null,
+  })
 
   return NextResponse.json({ success: true, data: updated })
 }

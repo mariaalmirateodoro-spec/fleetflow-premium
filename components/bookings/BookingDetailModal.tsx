@@ -7,6 +7,7 @@ import { StatusBadge, Badge } from '@/components/ui/Badge'
 import { formatDateTime, formatCurrency, vehicleLabels } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/components/ui/Toast'
+import { getActiveAssignment, type DriverAssignmentRow } from '@/lib/availability'
 import type { Booking, Driver, Profile, Quote, Supplier } from '@/types'
 
 interface Props {
@@ -161,6 +162,13 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, drivers,
   // Driver assignment state
   const [assignedDriverId, setAssignedDriverId] = useState<string | null>(booking.driver_id ?? null)
   const [driverLoading, setDriverLoading] = useState(false)
+  const [driverAssignments, setDriverAssignments] = useState<DriverAssignmentRow[]>([])
+
+  // Audit log — who changed final cost / driver assignment, and when.
+  // Admin/manager only (RLS on audit_log already restricts to those roles,
+  // so this query just comes back empty for anyone else).
+  const [auditLog, setAuditLog] = useState<{ id: string; actor_name: string; action: string; field: string; old_value: string | null; new_value: string | null; created_at: string }[]>([])
+  const canViewAudit = ['admin', 'manager'].includes(profile.role)
 
   // Vehicle details state
   const [vehiclePlate, setVehiclePlate] = useState(booking.vehicle_plate ?? '')
@@ -211,6 +219,36 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, drivers,
   useEffect(() => {
     if (open) loadQuotes()
   }, [open, booking.id])
+
+  // Fetch other drivers' currently-approved bookings so the picker can tell
+  // who's out on a trip right now, without touching their manual is_available flag.
+  useEffect(() => {
+    if (!open || drivers.length === 0) return
+    const supabase = createClient()
+    supabase
+      .from('bookings')
+      .select('driver_id, status, pickup_datetime, dropoff_datetime')
+      .in('driver_id', drivers.map((d) => d.id))
+      .eq('status', 'approved')
+      .then(({ data, error }) => {
+        if (error) { console.error('[driverAssignments]', error); return }
+        setDriverAssignments((data ?? []) as DriverAssignmentRow[])
+      })
+  }, [open, drivers])
+
+  useEffect(() => {
+    if (!open || !canViewAudit) return
+    const supabase = createClient()
+    supabase
+      .from('audit_log')
+      .select('id, actor_name, action, field, old_value, new_value, created_at')
+      .eq('booking_id', booking.id)
+      .order('created_at', { ascending: false })
+      .then(({ data, error }) => {
+        if (error) { console.error('[auditLog]', error); return }
+        setAuditLog(data ?? [])
+      })
+  }, [open, booking.id, canViewAudit])
 
   // Sync assigned driver when booking prop changes
   useEffect(() => {
@@ -316,14 +354,12 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, drivers,
   }
 
   async function handleSelectQuote(quoteId: string) {
-    const supabase = createClient()
-    await supabase.from('quotes').update({ is_selected: false }).eq('booking_id', booking.id)
-    const quote = quotes.find((q) => q.id === quoteId)
-    await supabase.from('quotes').update({ is_selected: true }).eq('id', quoteId)
-    await supabase.from('bookings').update({
-      status: 'quoted',
-      assigned_supplier: quote?.supplier_id,
-    }).eq('id', booking.id)
+    const res = await fetch(`/api/bookings/${booking.id}/quotes/${quoteId}/select`, { method: 'POST' })
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}))
+      toast(`Failed to select quote: ${json.error ?? 'unknown error'}`, 'error')
+      return
+    }
     toast('Quote selected!', 'success')
     await loadQuotes()
     onRefresh()
@@ -332,19 +368,21 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, drivers,
 
   async function handleAddQuote() {
     setAddingQuote(true)
-    const supabase = createClient()
-    const { error } = await supabase.from('quotes').insert({
-      booking_id: booking.id,
-      supplier_id: newQuote.supplier_id,
-      total_amount: newQuote.total_amount,
-      includes_driver: newQuote.includes_driver,
-      vehicle_model: newQuote.vehicle_model || null,
-      notes: newQuote.notes || null,
-      created_by: profile.id,
+    const res = await fetch(`/api/bookings/${booking.id}/quotes`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        supplier_id: newQuote.supplier_id,
+        total_amount: newQuote.total_amount,
+        includes_driver: newQuote.includes_driver,
+        vehicle_model: newQuote.vehicle_model || null,
+        notes: newQuote.notes || null,
+      }),
     })
-    if (error) {
-      console.error('[handleAddQuote]', error)
-      toast(`Failed to save quote: ${error.message}`, 'error')
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}))
+      console.error('[handleAddQuote]', json.error)
+      toast(`Failed to save quote: ${json.error ?? 'unknown error'}`, 'error')
       setAddingQuote(false)
       return
     }
@@ -599,12 +637,15 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, drivers,
     }
     setCostLoading(true)
     try {
-      const supabase = createClient()
-      const { error } = await supabase
-        .from('bookings')
-        .update({ final_cost_usd: parsed })
-        .eq('id', booking.id)
-      if (error) throw new Error(error.message)
+      // Routed through the server (not a direct client update) so the change
+      // gets permission-checked and written to the audit log.
+      const res = await fetch(`/api/bookings/${booking.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ final_cost_usd: parsed }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Something went wrong')
       toast('Final cost updated', 'success')
       setEditingCost(false)
       onRefresh()
@@ -632,7 +673,9 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, drivers,
     booking.status !== 'cancelled' && booking.status !== 'completed'
   const canComplete = ['admin', 'manager', 'staff'].includes(profile.role) &&
     booking.status === 'approved'
-  const canEditCost = ['admin', 'manager', 'staff'].includes(profile.role) &&
+  // Restricted to admin/manager — money changes need a second tier of
+  // accountability beyond regular staff. Enforced again server-side.
+  const canEditCost = ['admin', 'manager'].includes(profile.role) &&
     (booking.status === 'approved' || booking.status === 'completed')
   const canAssignDriver = ['admin', 'manager', 'staff'].includes(profile.role) &&
     booking.driver_required &&
@@ -843,6 +886,27 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, drivers,
           </div>
         </div>
 
+        {/* Audit log — admin/manager only. Shows who changed final cost or
+            driver assignment, and what the value was before/after. */}
+        {canViewAudit && auditLog.length > 0 && (
+          <div className="bg-white/[0.03] rounded-xl px-3 py-2.5">
+            <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">Change History</p>
+            <div className="space-y-1.5 max-h-32 overflow-y-auto">
+              {auditLog.map((entry) => (
+                <p key={entry.id} className="text-[11px] text-slate-400 leading-relaxed">
+                  <span className="text-slate-300 font-medium">{entry.actor_name}</span>{' '}
+                  changed <span className="text-slate-300">{entry.field}</span> from{' '}
+                  <span className="text-red-400/80">{entry.old_value ?? '—'}</span> to{' '}
+                  <span className="text-emerald-400/80">{entry.new_value ?? '—'}</span>
+                  <span className="text-slate-600">
+                    {' '}· {new Date(entry.created_at).toLocaleString()}
+                  </span>
+                </p>
+              ))}
+            </div>
+          </div>
+        )}
+
         {(booking.notes || booking.special_requests) && (
           <div className="space-y-2">
             {booking.notes && (
@@ -860,6 +924,24 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, drivers,
           </div>
         )}
 
+        {/* Guest feedback — only present once the trip is rated */}
+        {(() => {
+          const fb = Array.isArray(booking.feedback) ? booking.feedback[0] : booking.feedback
+          if (!fb) return null
+          return (
+            <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl px-3 py-2.5">
+              <p className="text-[10px] text-amber-400/80 uppercase tracking-wider mb-1 flex items-center gap-1">
+                Guest Rating
+                <span className="text-amber-300 normal-case tracking-normal">
+                  {'★'.repeat(fb.rating)}
+                  <span className="text-slate-700">{'★'.repeat(5 - fb.rating)}</span>
+                </span>
+              </p>
+              {fb.comment && <p className="text-xs text-slate-300 mt-1">{fb.comment}</p>}
+            </div>
+          )
+        })()}
+
         {/* Driver picker — shown when driver is required and user can assign */}
         {canAssignDriver && !assignedDriver && (
           <div className="border border-amber-500/20 bg-amber-500/5 rounded-2xl overflow-hidden">
@@ -874,28 +956,37 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, drivers,
               {drivers.filter((d) => d.is_available).length === 0 ? (
                 <p className="text-xs text-slate-500 text-center py-3">No available drivers. Mark a driver as available in the Drivers module first.</p>
               ) : (
-                drivers.filter((d) => d.is_available).map((driver) => (
-                  <button
-                    key={driver.id}
-                    onClick={() => checkAndAssignDriver(driver.id)}
-                    disabled={driverLoading}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-white/8 bg-white/[0.02] hover:border-emerald-500/30 hover:bg-emerald-500/5 text-left transition-all disabled:opacity-40 group"
-                  >
-                    <div className="w-7 h-7 rounded-full bg-emerald-500/15 border border-emerald-500/20 flex items-center justify-center shrink-0">
-                      <span className="text-[11px] font-bold text-emerald-400">
-                        {driver.full_name.split(' ').map((n) => n[0]).slice(0, 2).join('')}
-                      </span>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold text-slate-200 group-hover:text-white transition-colors">{driver.full_name}</p>
-                      <p className="text-[11px] text-slate-500 truncate">{driver.phone} · {driver.license_number}</p>
-                    </div>
-                    {driverLoading
-                      ? <Loader2 className="w-3.5 h-3.5 text-slate-500 animate-spin shrink-0" />
-                      : <Check className="w-3.5 h-3.5 text-emerald-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-                    }
-                  </button>
-                ))
+                drivers.filter((d) => d.is_available).map((driver) => {
+                  const activeTrip = getActiveAssignment(driver.id, driverAssignments)
+                  const busy = !!activeTrip
+                  return (
+                    <button
+                      key={driver.id}
+                      onClick={() => checkAndAssignDriver(driver.id)}
+                      disabled={driverLoading || busy}
+                      title={busy ? `On a trip until ${formatDateTime(activeTrip!.dropoff_datetime ?? activeTrip!.pickup_datetime)}` : undefined}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-white/8 bg-white/[0.02] hover:border-emerald-500/30 hover:bg-emerald-500/5 text-left transition-all disabled:opacity-40 disabled:hover:border-white/8 disabled:hover:bg-white/[0.02] group"
+                    >
+                      <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${busy ? 'bg-amber-500/15 border border-amber-500/20' : 'bg-emerald-500/15 border border-emerald-500/20'}`}>
+                        <span className={`text-[11px] font-bold ${busy ? 'text-amber-400' : 'text-emerald-400'}`}>
+                          {driver.full_name.split(' ').map((n) => n[0]).slice(0, 2).join('')}
+                        </span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-slate-200 group-hover:text-white transition-colors">{driver.full_name}</p>
+                        <p className="text-[11px] text-slate-500 truncate">
+                          {busy ? `🚗 On a trip until ${formatDateTime(activeTrip!.dropoff_datetime ?? activeTrip!.pickup_datetime)}` : `${driver.phone} · ${driver.license_number}`}
+                        </p>
+                      </div>
+                      {driverLoading
+                        ? <Loader2 className="w-3.5 h-3.5 text-slate-500 animate-spin shrink-0" />
+                        : busy
+                        ? <span className="text-[10px] text-amber-400/80 font-medium shrink-0">Busy</span>
+                        : <Check className="w-3.5 h-3.5 text-emerald-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                      }
+                    </button>
+                  )
+                })
               )}
             </div>
           </div>

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
-import { sendBookingConfirmationEmail } from '@/lib/email'
+import { sendBookingConfirmationEmail, sendDraftSavedEmail } from '@/lib/email'
 
 // ─── Simple in-memory rate limiter ───────────────────────────
 // Limits each IP to 5 booking submissions per 10 minutes.
@@ -77,6 +77,39 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ error: `Missing required field: ${field}` }, { status: 400 })
         }
       }
+
+      // Real submissions require a verified email — drafts are exempt so
+      // saving progress stays frictionless.
+      const normalizedEmail = String(body.guest_email).trim().toLowerCase()
+      const { data: verification } = await adminClient
+        .from('email_verifications')
+        .select('id')
+        .eq('email', normalizedEmail)
+        .eq('verified', true)
+        .eq('used', false)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (!verification) {
+        return NextResponse.json(
+          { error: 'Please verify your email address before submitting your booking.' },
+          { status: 403 }
+        )
+      }
+
+      // Consume it so it can't be reused for a different booking
+      await adminClient.from('email_verifications').update({ used: true }).eq('id', verification.id)
+    } else {
+      // Drafts can skip almost everything, but we still need an email —
+      // it's the only way a guest can find their way back to an unfinished
+      // draft if they close the tab without noting the reference number.
+      if (!body.guest_email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.guest_email)) {
+        return NextResponse.json(
+          { error: 'Please enter a valid email address before saving a draft, so we can send you a link back to it.' },
+          { status: 400 }
+        )
+      }
     }
 
     const { data, error } = await anonClient
@@ -104,8 +137,12 @@ export async function POST(request: NextRequest) {
 
     if (error) return NextResponse.json({ error: error.message }, { status: 400 })
 
-    // Drafts are just a save point — no staff notification, no confirmation email yet.
+    // Drafts are just a save point — no staff notification yet, but we do send
+    // a lightweight "here's how to get back to it" email since it's the only
+    // recovery path if the guest closes the tab.
     if (isDraft) {
+      sendDraftSavedEmail(body.guest_email, data.reference_number)
+        .catch((err) => console.error('[email] draft-saved failed:', err))
       return NextResponse.json({ reference_number: data.reference_number, is_draft: true }, { status: 201 })
     }
 

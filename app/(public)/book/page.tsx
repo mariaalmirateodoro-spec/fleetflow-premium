@@ -55,8 +55,112 @@ function BookingForm() {
     if (t && vehicleLabels[t]) setForm((f) => ({ ...f, vehicle_type: t }))
   }, [searchParams])
 
-  const set = (key: string, value: string | boolean) =>
+  // Email verification — required before a real submit, not required for drafts.
+  const [emailVerified, setEmailVerified] = useState(false)
+  const [codeSent, setCodeSent] = useState(false)
+  const [verifyCode, setVerifyCode] = useState('')
+  const [sendingCode, setSendingCode] = useState(false)
+  const [verifying, setVerifying] = useState(false)
+  const [verifyError, setVerifyError] = useState('')
+  const [verifyInfo, setVerifyInfo] = useState('')
+
+  // Returning-guest recognition — only checked after email verification
+  // succeeds, so we never hand back a past guest's details to someone who
+  // merely typed their email address.
+  const [returningGuest, setReturningGuest] = useState<{
+    guest_name: string
+    guest_nationality: string
+    guest_phone: string
+    vehicle_type: VehicleType
+  } | null>(null)
+  const [returningDismissed, setReturningDismissed] = useState(false)
+
+  const set = (key: string, value: string | boolean) => {
+    // Changing the email after it's been verified invalidates that verification.
+    if (key === 'guest_email' && value !== form.guest_email) {
+      setEmailVerified(false)
+      setCodeSent(false)
+      setVerifyCode('')
+      setVerifyError('')
+      setVerifyInfo('')
+      setReturningGuest(null)
+      setReturningDismissed(false)
+    }
     setForm((f) => ({ ...f, [key]: value }))
+  }
+
+  const emailLooksValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.guest_email)
+
+  async function handleSendCode() {
+    setVerifyError('')
+    setVerifyInfo('')
+    setSendingCode(true)
+    try {
+      const res = await fetch('/api/public/verify-email/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: form.guest_email }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Could not send verification code.')
+      setCodeSent(true)
+      setVerifyInfo('Code sent! Check your inbox (and spam folder).')
+    } catch (err) {
+      setVerifyError(err instanceof Error ? err.message : 'Something went wrong.')
+    } finally {
+      setSendingCode(false)
+    }
+  }
+
+  async function handleVerifyCode() {
+    setVerifyError('')
+    setVerifying(true)
+    try {
+      const res = await fetch('/api/public/verify-email/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: form.guest_email, code: verifyCode }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Incorrect code.')
+      setEmailVerified(true)
+      setVerifyInfo('')
+      checkReturningGuest()
+    } catch (err) {
+      setVerifyError(err instanceof Error ? err.message : 'Something went wrong.')
+    } finally {
+      setVerifying(false)
+    }
+  }
+
+  // Only ever called right after a successful email verification — see the
+  // API route for why that ordering matters (it won't return anyone's data
+  // for an unverified email).
+  async function checkReturningGuest() {
+    try {
+      const res = await fetch('/api/public/returning-guest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: form.guest_email }),
+      })
+      const json = await res.json()
+      if (res.ok && json.returning) setReturningGuest(json.previous)
+    } catch {
+      // Non-critical — silently skip the "welcome back" convenience if this fails.
+    }
+  }
+
+  function applyReturningGuestDetails() {
+    if (!returningGuest) return
+    setForm((f) => ({
+      ...f,
+      guest_name: f.guest_name || returningGuest.guest_name || f.guest_name,
+      guest_nationality: f.guest_nationality || returningGuest.guest_nationality || f.guest_nationality,
+      guest_phone: f.guest_phone || returningGuest.guest_phone || f.guest_phone,
+      vehicle_type: returningGuest.vehicle_type ?? f.vehicle_type,
+    }))
+    setReturningDismissed(true)
+  }
 
   const [draftLoading, setDraftLoading] = useState(false)
 
@@ -100,8 +204,14 @@ function BookingForm() {
   // form's native required-field validation. The API accepts a partial payload
   // when is_draft is true.
   const handleSaveDraft = async () => {
-    setDraftLoading(true)
     setError('')
+
+    if (!emailLooksValid) {
+      setError('Please enter a valid email address before saving a draft — we\'ll send you a link back to it.')
+      return
+    }
+
+    setDraftLoading(true)
     try {
       const res = await fetch('/api/public/bookings', {
         method: 'POST',
@@ -119,8 +229,14 @@ function BookingForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setLoading(true)
     setError('')
+
+    if (!emailVerified) {
+      setError('Please verify your email address before submitting your booking.')
+      return
+    }
+
+    setLoading(true)
 
     try {
       const pickup_datetime = form.pickup_date && form.pickup_time
@@ -338,6 +454,122 @@ function BookingForm() {
           </div>
         </div>
 
+        {/* Contact info — moved ahead of Passenger info so email verification
+            (and the "welcome back, reuse your details?" prompt) happens
+            before the guest has to manually retype their name/nationality. */}
+        <div className="p-5 rounded-2xl border border-white/8 bg-white/3 space-y-4">
+          <h2 className="font-semibold text-white">Contact information</h2>
+          <p className="text-slate-500 text-xs -mt-1">So we can confirm your booking and send updates.</p>
+
+          <div>
+            <label className={labelCls}>Phone number *</label>
+            <input
+              required
+              type="tel"
+              className={inputCls}
+              placeholder="+63 917 123 4567"
+              value={form.guest_phone}
+              onChange={(e) => set('guest_phone', e.target.value)}
+            />
+          </div>
+
+          <div>
+            <label className={labelCls}>Email address *</label>
+            <div className="flex gap-2">
+              <input
+                required
+                type="email"
+                className={inputCls + ' flex-1'}
+                placeholder="john@example.com"
+                value={form.guest_email}
+                onChange={(e) => set('guest_email', e.target.value)}
+                disabled={emailVerified}
+              />
+              {emailVerified ? (
+                <span className="shrink-0 inline-flex items-center gap-1.5 px-4 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-sm font-medium">
+                  ✓ Verified
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleSendCode}
+                  disabled={!emailLooksValid || sendingCode}
+                  className="shrink-0 px-4 rounded-xl border border-white/15 bg-white/5 text-slate-200 text-sm font-medium hover:bg-white/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {sendingCode ? 'Sending…' : codeSent ? 'Resend code' : 'Send code'}
+                </button>
+              )}
+            </div>
+
+            {!emailVerified && codeSent && (
+              <div className="flex gap-2 mt-2">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={6}
+                  className={inputCls + ' flex-1'}
+                  placeholder="Enter 6-digit code"
+                  value={verifyCode}
+                  onChange={(e) => setVerifyCode(e.target.value.replace(/\D/g, ''))}
+                />
+                <button
+                  type="button"
+                  onClick={handleVerifyCode}
+                  disabled={verifyCode.length !== 6 || verifying}
+                  className="shrink-0 px-4 rounded-xl bg-gradient-fleet text-white text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {verifying ? 'Verifying…' : 'Verify'}
+                </button>
+              </div>
+            )}
+
+            {verifyInfo && <p className="text-emerald-400 text-xs mt-1.5">{verifyInfo}</p>}
+            {verifyError && <p className="text-red-400 text-xs mt-1.5">{verifyError}</p>}
+
+            {returningGuest && !returningDismissed && (
+              <div className="mt-3 p-3.5 rounded-xl border border-fleet-500/25 bg-fleet-500/8 flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium text-white">👋 Welcome back!</p>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Want to reuse your details from last time ({returningGuest.guest_name})?
+                  </p>
+                </div>
+                <div className="flex gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={applyReturningGuestDetails}
+                    className="px-3 py-1.5 rounded-lg bg-fleet-600 text-white text-xs font-semibold hover:bg-fleet-500 transition-colors"
+                  >
+                    Yes, autofill
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setReturningDismissed(true)}
+                    className="px-3 py-1.5 rounded-lg border border-white/15 text-slate-400 text-xs hover:text-white transition-colors"
+                  >
+                    No thanks
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div>
+            <label className={labelCls} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ color: '#06C755' }}>LINE</span> ID or phone
+              <span className="text-slate-500 font-normal">(optional)</span>
+            </label>
+            <input
+              type="text"
+              className={inputCls}
+              placeholder="LINE username or +63 9XX XXX XXXX"
+              value={form.guest_line_id}
+              onChange={(e) => set('guest_line_id', e.target.value)}
+            />
+            <p className="text-xs text-slate-500 mt-1.5">We'll send booking updates via LINE if provided.</p>
+          </div>
+        </div>
+
         {/* Passenger info */}
         <div className="p-5 rounded-2xl border border-white/8 bg-white/3 space-y-4">
           <h2 className="font-semibold text-white">Passenger information</h2>
@@ -379,51 +611,6 @@ function BookingForm() {
                 </option>
               ))}
             </select>
-          </div>
-        </div>
-
-        {/* Contact info */}
-        <div className="p-5 rounded-2xl border border-white/8 bg-white/3 space-y-4">
-          <h2 className="font-semibold text-white">Contact information</h2>
-          <p className="text-slate-500 text-xs -mt-1">So we can confirm your booking and send updates.</p>
-
-          <div>
-            <label className={labelCls}>Phone number *</label>
-            <input
-              required
-              type="tel"
-              className={inputCls}
-              placeholder="+63 917 123 4567"
-              value={form.guest_phone}
-              onChange={(e) => set('guest_phone', e.target.value)}
-            />
-          </div>
-
-          <div>
-            <label className={labelCls}>Email address *</label>
-            <input
-              required
-              type="email"
-              className={inputCls}
-              placeholder="john@example.com"
-              value={form.guest_email}
-              onChange={(e) => set('guest_email', e.target.value)}
-            />
-          </div>
-
-          <div>
-            <label className={labelCls} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ color: '#06C755' }}>LINE</span> ID or phone
-              <span className="text-slate-500 font-normal">(optional)</span>
-            </label>
-            <input
-              type="text"
-              className={inputCls}
-              placeholder="LINE username or +63 9XX XXX XXXX"
-              value={form.guest_line_id}
-              onChange={(e) => set('guest_line_id', e.target.value)}
-            />
-            <p className="text-xs text-slate-500 mt-1.5">We'll send booking updates via LINE if provided.</p>
           </div>
         </div>
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { sendDriverAssignedEmail } from '@/lib/email'
+import { logAudit } from '@/lib/audit'
 
 // Bypasses RLS — only used server-side for admin cascade deletes
 function createAdminClient() {
@@ -32,33 +33,45 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role, full_name')
+    .eq('id', user.id)
+    .single()
+
   const body = await request.json()
   const admin = createAdminClient()
 
+  // Final cost changes have money-movement implications — restrict to
+  // admin/manager (a plain staff account could otherwise quietly adjust the
+  // amount after approval with nobody else aware).
+  if (body.final_cost_usd !== undefined && !['admin', 'manager'].includes(profile?.role ?? '')) {
+    return NextResponse.json({ error: 'Only admins and managers can change the final cost.' }, { status: 403 })
+  }
+
+  // Fetch current values for anything we might need to audit or compare against.
+  // Includes every field the staff "Edit Booking" form can send, so the
+  // catch-all diff below only reports fields that actually changed.
+  const { data: existing } = await admin
+    .from('bookings')
+    .select('driver_id, final_cost_usd, guest_email, guest_name, reference_number, pickup_location, dropoff_location, pickup_datetime, dropoff_datetime, vehicle_type, vehicle_plate, vehicle_model, guest_nationality, guest_count, guest_phone, guest_line_id, driver_required, budget_usd, notes, special_requests, is_draft')
+    .eq('id', params.id)
+    .single()
+
   // If a driver is being assigned, check whether it's a new/changed assignment
   let shouldEmailDriver = false
-  let currentBooking: Record<string, unknown> | null = null
   let assignedDriver: { full_name: string; phone: string } | null = null
 
-  if (body.driver_id != null) {
-    const { data: existing } = await admin
-      .from('bookings')
-      .select('driver_id, guest_email, guest_name, reference_number, pickup_location, dropoff_location, pickup_datetime, vehicle_type, vehicle_plate, vehicle_model')
-      .eq('id', params.id)
+  if (body.driver_id != null && existing && existing.driver_id !== body.driver_id && existing.guest_email) {
+    const { data: driver } = await admin
+      .from('drivers')
+      .select('full_name, phone')
+      .eq('id', body.driver_id)
       .single()
 
-    if (existing && existing.driver_id !== body.driver_id && existing.guest_email) {
-      const { data: driver } = await admin
-        .from('drivers')
-        .select('full_name, phone')
-        .eq('id', body.driver_id)
-        .single()
-
-      if (driver) {
-        shouldEmailDriver = true
-        currentBooking = existing as Record<string, unknown>
-        assignedDriver = driver as { full_name: string; phone: string }
-      }
+    if (driver) {
+      shouldEmailDriver = true
+      assignedDriver = driver as { full_name: string; phone: string }
     }
   }
 
@@ -72,21 +85,61 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })
 
+  // Audit trail — only for the fields that matter for accountability.
+  const actorName = profile?.full_name || user.email || 'Unknown'
+  if (existing) {
+    if (body.final_cost_usd !== undefined && body.final_cost_usd !== existing.final_cost_usd) {
+      await logAudit(admin, {
+        bookingId: params.id, actorId: user.id, actorName,
+        action: 'final_cost_changed', field: 'final_cost_usd',
+        oldValue: existing.final_cost_usd, newValue: body.final_cost_usd,
+      })
+    }
+    if (body.driver_id !== undefined && body.driver_id !== existing.driver_id) {
+      await logAudit(admin, {
+        bookingId: params.id, actorId: user.id, actorName,
+        action: 'driver_changed', field: 'driver_id',
+        oldValue: existing.driver_id, newValue: body.driver_id,
+      })
+    }
+  }
+
+  // Generic catch-all: any other fields that actually changed value (guest
+  // info, pickup/dropoff details, vehicle type, notes, etc. — e.g. edits made
+  // through the staff "Edit Booking" form) get one summary entry. Diffed
+  // against the fetched "existing" row above, not just "was this key present
+  // in the request body" — the edit form resends the whole payload every
+  // time, so a naive presence-check would falsely claim every field changed.
+  if (existing) {
+    const changedKeys = Object.keys(body).filter((k) => {
+      if (['final_cost_usd', 'driver_id'].includes(k)) return false
+      if (!(k in existing)) return false
+      return body[k] !== (existing as Record<string, unknown>)[k]
+    })
+    if (changedKeys.length > 0) {
+      await logAudit(admin, {
+        bookingId: params.id, actorId: user.id, actorName,
+        action: body.is_draft ? 'booking_draft_saved' : 'booking_updated',
+        note: `Updated fields: ${changedKeys.join(', ')}`,
+      })
+    }
+  }
+
   // Send driver assignment email to guest
-  if (shouldEmailDriver && currentBooking && assignedDriver) {
+  if (shouldEmailDriver && existing && assignedDriver) {
     try {
       await sendDriverAssignedEmail({
-        guestName: currentBooking.guest_name as string,
-        guestEmail: currentBooking.guest_email as string,
-        referenceNumber: currentBooking.reference_number as string,
-        pickupLocation: currentBooking.pickup_location as string,
-        dropoffLocation: currentBooking.dropoff_location as string,
-        pickupDatetime: currentBooking.pickup_datetime as string,
-        vehicleType: currentBooking.vehicle_type as string,
+        guestName: existing.guest_name as string,
+        guestEmail: existing.guest_email as string,
+        referenceNumber: existing.reference_number as string,
+        pickupLocation: existing.pickup_location as string,
+        dropoffLocation: existing.dropoff_location as string,
+        pickupDatetime: existing.pickup_datetime as string,
+        vehicleType: existing.vehicle_type as string,
         driverName: assignedDriver.full_name,
         driverPhone: assignedDriver.phone,
-        vehiclePlate: (body.vehicle_plate ?? currentBooking.vehicle_plate) as string | null,
-        vehicleModel: (body.vehicle_model ?? currentBooking.vehicle_model) as string | null,
+        vehiclePlate: (body.vehicle_plate ?? existing.vehicle_plate) as string | null,
+        vehicleModel: (body.vehicle_model ?? existing.vehicle_model) as string | null,
       })
     } catch (err) {
       console.error('[driver-assign] email error:', err)

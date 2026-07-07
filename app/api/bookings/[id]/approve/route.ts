@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { sendBookingApprovedEmail, sendBookingRejectedEmail } from '@/lib/email'
+import { logAudit } from '@/lib/audit'
 
 function createAdminClient() {
   return createSupabaseClient(
@@ -100,6 +101,17 @@ export async function POST(
     reviewer_id: profile.id,
     action,
     comments: comments ?? null,
+  })
+
+  await logAudit(admin, {
+    bookingId: params.id,
+    actorId: profile.id,
+    actorName: profile.full_name || user.email || 'Unknown',
+    action: action === 'approved' ? 'booking_approved' : action === 'rejected' ? 'booking_rejected' : 'booking_revision_requested',
+    field: 'status',
+    oldValue: booking.status,
+    newValue: newStatus,
+    note: comments ?? null,
   })
 
   // Insert in-app notification for booking creator

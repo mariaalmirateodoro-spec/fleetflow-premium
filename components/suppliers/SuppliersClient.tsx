@@ -8,7 +8,6 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { TableSkeleton } from '@/components/ui/LoadingSpinner'
 import { SupplierModal } from '@/components/suppliers/SupplierModal'
 import { useToast } from '@/components/ui/Toast'
-import { createClient } from '@/lib/supabase/client'
 import type { Profile, Supplier } from '@/types'
 
 interface Props {
@@ -40,15 +39,18 @@ export function SuppliersClient({ initialSuppliers, profile }: Props) {
 
   async function refresh() {
     setLoading(true)
-    const supabase = createClient()
-    const { data } = await supabase.from('suppliers').select('*').order('company_name')
-    if (data) setSuppliers(data)
+    const res = await fetch('/api/suppliers')
+    const json = await res.json()
+    if (json.data) setSuppliers(json.data)
     setLoading(false)
   }
 
   async function toggleAvailability(supplier: Supplier) {
-    const supabase = createClient()
-    await supabase.from('suppliers').update({ is_available: !supplier.is_available }).eq('id', supplier.id)
+    await fetch('/api/suppliers', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: supplier.id, is_available: !supplier.is_available }),
+    })
     toast(`${supplier.company_name} ${!supplier.is_available ? 'activated' : 'deactivated'}`, 'success')
     await refresh()
   }
@@ -59,8 +61,7 @@ export function SuppliersClient({ initialSuppliers, profile }: Props) {
 
   async function confirmDeleteSupplier() {
     if (!confirmDelete) return
-    const supabase = createClient()
-    await supabase.from('suppliers').delete().eq('id', confirmDelete.id)
+    await fetch(`/api/suppliers?id=${confirmDelete.id}`, { method: 'DELETE' })
     toast(`${confirmDelete.company_name} deleted`, 'success')
     setConfirmDelete(null)
     await refresh()

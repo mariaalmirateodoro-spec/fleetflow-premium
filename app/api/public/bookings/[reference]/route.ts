@@ -45,6 +45,7 @@ export async function PATCH(
     const body = await request.json()
     const finalize = body.finalize === true
 
+    let verificationId: string | null = null
     if (finalize) {
       const required = ['guest_name', 'guest_nationality', 'guest_count', 'pickup_location', 'dropoff_location', 'pickup_datetime', 'vehicle_type', 'guest_phone', 'guest_email']
       for (const field of required) {
@@ -52,6 +53,25 @@ export async function PATCH(
           return NextResponse.json({ error: `Missing required field: ${field}` }, { status: 400 })
         }
       }
+
+      const normalizedEmail = String(body.guest_email).trim().toLowerCase()
+      const { data: verification } = await adminClient
+        .from('email_verifications')
+        .select('id')
+        .eq('email', normalizedEmail)
+        .eq('verified', true)
+        .eq('used', false)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (!verification) {
+        return NextResponse.json(
+          { error: 'Please verify your email address before submitting your booking.' },
+          { status: 403 }
+        )
+      }
+      verificationId = verification.id
     }
 
     const update: Record<string, unknown> = {}
@@ -74,6 +94,11 @@ export async function PATCH(
     if (error) return NextResponse.json({ error: error.message }, { status: 400 })
 
     if (finalize) {
+      // Consume the verification so it can't be reused for a different booking
+      if (verificationId) {
+        await adminClient.from('email_verifications').update({ used: true }).eq('id', verificationId)
+      }
+
       // Same follow-up as a normal guest submission: notify staff + email the guest.
       const { data: staff } = await adminClient
         .from('profiles')

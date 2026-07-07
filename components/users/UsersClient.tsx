@@ -37,12 +37,19 @@ export function UsersClient({ users: initialUsers, currentUser }: Props) {
     setLoading(false)
   }
 
+  // Role/status changes go through /api/users (instead of writing to Supabase
+  // directly from the browser) so they show up in the Activity Log — this is
+  // exactly the kind of action ("who changed whose permissions") that needs
+  // to be traceable.
   async function updateRole() {
     if (!editUser) return
     setLoading(true)
-    const supabase = createClient()
-    const { error } = await supabase.from('profiles').update({ role: newRole }).eq('id', editUser.id)
-    if (error) toast('Failed to update role', 'error')
+    const res = await fetch('/api/users', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: editUser.id, role: newRole }),
+    })
+    if (!res.ok) toast('Failed to update role', 'error')
     else { toast(`${editUser.full_name}'s role updated to ${newRole}`, 'success'); setEditUser(null) }
     await refresh()
     setLoading(false)
@@ -50,8 +57,11 @@ export function UsersClient({ users: initialUsers, currentUser }: Props) {
 
   async function toggleActive(user: Profile) {
     if (user.id === currentUser.id) { toast("You can't deactivate yourself", 'warning'); return }
-    const supabase = createClient()
-    await supabase.from('profiles').update({ is_active: !user.is_active }).eq('id', user.id)
+    await fetch('/api/users', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: user.id, is_active: !user.is_active }),
+    })
     toast(`${user.full_name} ${!user.is_active ? 'activated' : 'deactivated'}`, 'success')
     await refresh()
   }

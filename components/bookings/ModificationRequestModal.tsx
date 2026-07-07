@@ -33,11 +33,17 @@ export default function ModificationRequestModal({ referenceNumber, bookingStatu
 
     setLoading(true)
     try {
+      // Convert the raw datetime-local value (guest's browser wall-clock,
+      // e.g. "2026-07-10T13:00") to a real UTC timestamp here — same
+      // conversion the original booking form uses. Previously this was sent
+      // as-is and stored unconverted, which was inconsistent with every
+      // other pickup_datetime in the system and could shift the time once a
+      // staff member approved the request.
       const res = await fetch(`/api/bookings/${referenceNumber}/modify-request`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          pickup_datetime: pickupDatetime || undefined,
+          pickup_datetime: pickupDatetime ? new Date(pickupDatetime).toISOString() : undefined,
           pickup_location: pickupLocation || undefined,
           dropoff_location: dropoffLocation || undefined,
           notes: notes || undefined,

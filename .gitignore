@@ -15,6 +15,14 @@ dist/
 .env.development.local
 .env.test.local
 .env.production.local
+.env*.save
+*.env.save
+
+# One-off scratch scripts and generated report files — not application code
+inspect_tmp.js
+xlsxtest_tmp.js
+FleetFlow_Sample_Report.xlsx
+FleetFlow_*.docx
 
 # Logs
 npm-debug.log*

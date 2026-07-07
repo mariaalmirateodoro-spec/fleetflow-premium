@@ -4,12 +4,26 @@ import { useState, useEffect } from 'react'
 import { Loader2, Sparkles, Phone, Mail, MessageCircle } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { LocationInput } from '@/components/ui/LocationInput'
-import { createClient } from '@/lib/supabase/client'
 import { vehicleLabels } from '@/lib/utils'
 import type { Booking, CreateBookingInput, Profile, Supplier, VehicleType } from '@/types'
 
 const VEHICLE_TYPES: VehicleType[] = ['sedan', 'suv', 'van', 'minibus', 'luxury', 'pickup']
 const NATIONALITIES = ['Japanese', 'Chinese', 'Korean', 'American', 'British', 'German', 'French', 'Australian', 'Canadian', 'Indian', 'UAE', 'Saudi', 'Mexican', 'Egyptian', 'Other']
+
+// Converts a stored UTC timestamp into the local wall-clock value a
+// <input type="datetime-local"> expects. Using .slice(0, 16) on the raw UTC
+// string instead (the old code) grabs the UTC digits as if they were already
+// local — so on save, `new Date(value).toISOString()` (which treats the typed
+// value as local time) shifts the real pickup/dropoff time by the browser's
+// UTC offset EVERY time the form is saved, even if that field was never
+// touched. This local-getter-based conversion round-trips correctly instead.
+function toLocalInputValue(iso?: string | null): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return ''
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
 
 interface Props {
   open: boolean
@@ -52,8 +66,8 @@ export function BookingModal({ open, onClose, booking, suppliers, profile, onSuc
         guest_phone: booking.guest_phone ?? '',
         guest_email: booking.guest_email ?? '',
         guest_line_id: booking.guest_line_id ?? '',
-        pickup_datetime: booking.pickup_datetime?.slice(0, 16) ?? '',
-        dropoff_datetime: booking.dropoff_datetime?.slice(0, 16) ?? '',
+        pickup_datetime: toLocalInputValue(booking.pickup_datetime),
+        dropoff_datetime: toLocalInputValue(booking.dropoff_datetime),
         pickup_location: booking.pickup_location,
         dropoff_location: booking.dropoff_location,
         vehicle_type: booking.vehicle_type,
@@ -109,45 +123,41 @@ export function BookingModal({ open, onClose, booking, suppliers, profile, onSuc
     }
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
+  // Create/edit go through the API routes (instead of writing to Supabase
+  // directly from the browser) so every staff booking action — not just
+  // final-cost/driver changes — ends up in the Activity Log.
+  async function saveBooking(isDraft: boolean) {
     setLoading(true)
+    const payload = buildPayload(isDraft)
 
-    const supabase = createClient()
-    const payload = buildPayload(false)
-
-    let error
-    if (isEdit) {
-      ;({ error } = await supabase.from('bookings').update(payload).eq('id', booking!.id))
-    } else {
-      ;({ error } = await supabase.from('bookings').insert({ ...payload, created_by: profile.id }))
-    }
+    const res = isEdit
+      ? await fetch(`/api/bookings/${booking!.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+      : await fetch('/api/bookings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
 
     setLoading(false)
-    if (!error) {
+    if (res.ok) {
       onSuccess()
     }
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    await saveBooking(false)
   }
 
   // "Save as Draft" bypasses the form's native required-field validation
   // (button is type="button", so it never triggers HTML5 constraint checks)
   // and is allowed to persist a booking that's still missing information.
   async function handleSaveDraft() {
-    setLoading(true)
-    const supabase = createClient()
-    const payload = buildPayload(true)
-
-    let error
-    if (isEdit) {
-      ;({ error } = await supabase.from('bookings').update(payload).eq('id', booking!.id))
-    } else {
-      ;({ error } = await supabase.from('bookings').insert({ ...payload, created_by: profile.id }))
-    }
-
-    setLoading(false)
-    if (!error) {
-      onSuccess()
-    }
+    await saveBooking(true)
   }
 
   return (

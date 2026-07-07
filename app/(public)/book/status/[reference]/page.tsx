@@ -6,6 +6,7 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import ModificationRequestModal from '@/components/bookings/ModificationRequestModal'
 import { DraftResumeForm } from '@/components/bookings/DraftResumeForm'
+import { TripFeedbackForm } from '@/components/bookings/TripFeedbackForm'
 
 function createAdminClient() {
   return createSupabaseClient(
@@ -213,6 +214,16 @@ export default async function BookingStatusPage({
     .limit(1)
 
   const approvalNotes = approvalRecords?.[0]?.comments ?? null
+
+  // Existing rating (if any) — lets a guest revisit and edit their feedback
+  const { data: feedbackRow } =
+    booking.status === 'completed'
+      ? await admin
+          .from('feedback')
+          .select('rating, comment')
+          .eq('booking_id', booking.id)
+          .maybeSingle()
+      : { data: null }
 
   const cfg = getStatusConfig(booking as Booking)
   const timeline = buildTimeline(booking as Booking)
@@ -431,6 +442,15 @@ export default async function BookingStatusPage({
             ))}
           </ol>
         </div>
+
+        {/* Rate Your Trip — completed bookings only, optional */}
+        {booking.status === 'completed' && (
+          <TripFeedbackForm
+            referenceNumber={booking.reference_number}
+            existingRating={feedbackRow?.rating ?? null}
+            existingComment={feedbackRow?.comment ?? null}
+          />
+        )}
 
         {/* Modification Request */}
         <ModificationRequestModal

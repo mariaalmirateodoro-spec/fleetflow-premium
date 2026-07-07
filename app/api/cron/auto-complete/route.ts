@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { sendTripCompletionReceiptEmail } from '@/lib/email'
+import { sendTripCompletionReceiptEmail, sendTripCompletedStaffEmail } from '@/lib/email'
 
 const adminSupabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -34,6 +34,7 @@ export async function GET(request: Request) {
       vehicle_model,
       final_cost_usd,
       driver_id,
+      created_by,
       drivers ( full_name )
     `)
     .eq('status', 'approved')
@@ -52,7 +53,7 @@ export async function GET(request: Request) {
 
   const { error: updateError } = await adminSupabase
     .from('bookings')
-    .update({ status: 'completed', updated_at: now })
+    .update({ status: 'completed', completed_at: now, updated_at: now })
     .in('id', ids)
 
   if (updateError) {
@@ -62,29 +63,74 @@ export async function GET(request: Request) {
 
   console.log(`[auto-complete] marked ${ids.length} booking(s) as completed:`, bookings.map((b) => b.reference_number))
 
-  // Send receipt emails for each completed booking
+  // Internal staff — notified once per completed trip, same recipients as new-booking notifications
+  const { data: staffProfiles } = await adminSupabase
+    .from('profiles')
+    .select('email')
+    .in('role', ['admin', 'manager', 'staff'])
+  const staffEmails = staffProfiles?.map((p) => p.email).filter(Boolean).join(',') ?? ''
+
+  // Send receipt emails (guest) + internal notification (staff) for each completed booking
   let emailsSent = 0
   for (const booking of bookings) {
-    if (!booking.guest_email) continue
-    try {
-      const driverName = (booking.drivers as { full_name: string } | null)?.full_name ?? null
-      await sendTripCompletionReceiptEmail({
-        guestEmail: booking.guest_email,
-        guestName: booking.guest_name,
-        referenceNumber: booking.reference_number,
-        pickupDatetime: booking.pickup_datetime,
-        dropoffDatetime: booking.dropoff_datetime ?? null,
-        pickupLocation: booking.pickup_location,
-        dropoffLocation: booking.dropoff_location,
-        vehicleType: booking.vehicle_type,
-        vehiclePlate: booking.vehicle_plate ?? null,
-        vehicleModel: booking.vehicle_model ?? null,
-        finalCostUsd: booking.final_cost_usd ?? null,
-        driverName,
-      })
-      emailsSent++
-    } catch (err) {
-      console.error(`[auto-complete] receipt email error for ${booking.reference_number}:`, err)
+    const driversField = booking.drivers as { full_name: string }[] | { full_name: string } | null
+    const driverName = (Array.isArray(driversField) ? driversField[0] : driversField)?.full_name ?? null
+
+    if (booking.guest_email) {
+      try {
+        await sendTripCompletionReceiptEmail({
+          guestEmail: booking.guest_email,
+          guestName: booking.guest_name,
+          referenceNumber: booking.reference_number,
+          pickupDatetime: booking.pickup_datetime,
+          dropoffDatetime: booking.dropoff_datetime ?? null,
+          pickupLocation: booking.pickup_location,
+          dropoffLocation: booking.dropoff_location,
+          vehicleType: booking.vehicle_type,
+          vehiclePlate: booking.vehicle_plate ?? null,
+          vehicleModel: booking.vehicle_model ?? null,
+          finalCostUsd: booking.final_cost_usd ?? null,
+          driverName,
+        })
+        emailsSent++
+      } catch (err) {
+        console.error(`[auto-complete] receipt email error for ${booking.reference_number}:`, err)
+      }
+    }
+
+    if (staffEmails) {
+      try {
+        await sendTripCompletedStaffEmail({
+          staffEmails,
+          referenceNumber: booking.reference_number,
+          guestName: booking.guest_name,
+          pickupLocation: booking.pickup_location,
+          dropoffLocation: booking.dropoff_location,
+          vehicleType: booking.vehicle_type,
+          finalCostUsd: booking.final_cost_usd ?? null,
+        })
+      } catch (err) {
+        console.error(`[auto-complete] staff email error for ${booking.reference_number}:`, err)
+      }
+    }
+
+    // In-app notification for the booking's creator — same as the manual
+    // "Complete" button in the dashboard (app/api/bookings/[id]/complete),
+    // so auto-completed trips aren't silently missing this compared to
+    // manually-completed ones. Guest-submitted bookings have no created_by,
+    // so nothing to notify there (guests get the email above instead).
+    if (booking.created_by) {
+      try {
+        await adminSupabase.from('notifications').insert({
+          user_id: booking.created_by,
+          type: 'system',
+          title: 'Trip Completed',
+          message: `Booking ${booking.reference_number} has been marked as completed.`,
+          booking_id: booking.id,
+        })
+      } catch (err) {
+        console.error(`[auto-complete] notification error for ${booking.reference_number}:`, err)
+      }
     }
   }
 
