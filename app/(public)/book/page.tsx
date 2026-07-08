@@ -360,7 +360,7 @@ function BookingForm() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className={labelCls}>Pickup date *</label>
               <input
@@ -574,7 +574,7 @@ function BookingForm() {
         <div className="p-5 rounded-2xl border border-white/8 bg-white/3 space-y-4">
           <h2 className="font-semibold text-white">Passenger information</h2>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className={labelCls}>Full name *</label>
               <input
