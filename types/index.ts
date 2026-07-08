@@ -112,6 +112,7 @@ export interface Quote {
   valid_until: string | null
   notes: string | null
   is_selected: boolean
+  invoice_path: string | null
   created_by: string | null
   created_at: string
   // Relations

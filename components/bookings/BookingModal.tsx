@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { Loader2, Sparkles, Phone, Mail, MessageCircle } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { Loader2, Sparkles, Phone, Mail, MessageCircle, Search, UserCheck } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { LocationInput } from '@/components/ui/LocationInput'
 import { vehicleLabels } from '@/lib/utils'
@@ -39,6 +39,23 @@ export function BookingModal({ open, onClose, booking, suppliers, profile, onSuc
   const [loading, setLoading] = useState(false)
   const [aiLoading, setAiLoading] = useState(false)
   const [aiSuggestion, setAiSuggestion] = useState('')
+
+  // Returning-guest search — lets staff pull in a past guest's contact info
+  // instead of retyping it, mirroring the autofill guests already get on the
+  // public /book page. Only shown when creating a brand-new booking.
+  const [guestQuery, setGuestQuery] = useState('')
+  const [guestResults, setGuestResults] = useState<{
+    guest_name: string
+    guest_nationality: string | null
+    guest_phone: string | null
+    guest_email: string | null
+    guest_line_id: string | null
+    vehicle_type: VehicleType
+  }[]>([])
+  const [guestSearchOpen, setGuestSearchOpen] = useState(false)
+  const [guestSearching, setGuestSearching] = useState(false)
+  const [appliedGuest, setAppliedGuest] = useState<string | null>(null)
+  const guestSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [form, setForm] = useState<CreateBookingInput & { special_requests?: string }>({
     guest_name: '',
     guest_nationality: 'Japanese',
@@ -81,6 +98,48 @@ export function BookingModal({ open, onClose, booking, suppliers, profile, onSuc
 
   function update<K extends keyof typeof form>(key: K, value: typeof form[K]) {
     setForm((prev) => ({ ...prev, [key]: value }))
+  }
+
+  useEffect(() => {
+    if (isEdit) return
+    if (guestSearchTimer.current) clearTimeout(guestSearchTimer.current)
+    if (guestQuery.trim().length < 2) {
+      setGuestResults([])
+      setGuestSearchOpen(false)
+      return
+    }
+    guestSearchTimer.current = setTimeout(async () => {
+      setGuestSearching(true)
+      try {
+        const res = await fetch(`/api/bookings/guest-lookup?q=${encodeURIComponent(guestQuery.trim())}`)
+        const json = await res.json()
+        setGuestResults(json.data ?? [])
+        setGuestSearchOpen(true)
+      } catch {
+        setGuestResults([])
+      } finally {
+        setGuestSearching(false)
+      }
+    }, 350)
+    return () => {
+      if (guestSearchTimer.current) clearTimeout(guestSearchTimer.current)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [guestQuery, isEdit])
+
+  function applyGuest(guest: typeof guestResults[number]) {
+    setForm((prev) => ({
+      ...prev,
+      guest_name: guest.guest_name || prev.guest_name,
+      guest_nationality: guest.guest_nationality || prev.guest_nationality,
+      guest_phone: guest.guest_phone || prev.guest_phone,
+      guest_email: guest.guest_email || prev.guest_email,
+      guest_line_id: guest.guest_line_id || prev.guest_line_id,
+      vehicle_type: guest.vehicle_type || prev.vehicle_type,
+    }))
+    setAppliedGuest(guest.guest_name)
+    setGuestSearchOpen(false)
+    setGuestQuery('')
   }
 
   async function getAISuggestion() {
@@ -169,6 +228,52 @@ export function BookingModal({ open, onClose, booking, suppliers, profile, onSuc
       size="2xl"
     >
       <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Returning-guest search */}
+        {!isEdit && (
+          <div className="relative">
+            <label className="flex items-center gap-1.5 text-xs text-slate-400 mb-1.5 font-medium">
+              <Search className="w-3 h-3" /> Search past guest
+            </label>
+            <input
+              value={guestQuery}
+              onChange={(e) => { setGuestQuery(e.target.value); setAppliedGuest(null) }}
+              onFocus={() => { if (guestResults.length) setGuestSearchOpen(true) }}
+              placeholder="Type a name, phone, or email to reuse their details…"
+              className="input-dark"
+            />
+            {guestSearching && (
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-500 absolute right-3 top-[34px]" />
+            )}
+            {guestSearchOpen && guestResults.length > 0 && (
+              <div className="absolute z-20 mt-1 w-full rounded-xl border border-white/10 bg-[#141a2e] shadow-2xl max-h-64 overflow-y-auto">
+                {guestResults.map((g, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => applyGuest(g)}
+                    className="w-full text-left px-3 py-2 hover:bg-white/5 transition-colors border-b border-white/5 last:border-0"
+                  >
+                    <p className="text-sm text-white font-medium">{g.guest_name}</p>
+                    <p className="text-[11px] text-slate-500">
+                      {[g.guest_phone, g.guest_email, g.guest_nationality].filter(Boolean).join(' · ')}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            )}
+            {guestSearchOpen && !guestSearching && guestResults.length === 0 && guestQuery.trim().length >= 2 && (
+              <div className="absolute z-20 mt-1 w-full rounded-xl border border-white/10 bg-[#141a2e] shadow-2xl px-3 py-2.5 text-xs text-slate-500">
+                No past guest matches "{guestQuery.trim()}"
+              </div>
+            )}
+            {appliedGuest && (
+              <p className="flex items-center gap-1.5 text-[11px] text-emerald-400 mt-1.5">
+                <UserCheck className="w-3 h-3" /> Filled in details from {appliedGuest}'s last booking
+              </p>
+            )}
+          </div>
+        )}
+
         {/* Guest info */}
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2 sm:col-span-1">

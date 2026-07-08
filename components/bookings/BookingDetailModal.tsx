@@ -158,6 +158,7 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, drivers,
   const [showAddQuote, setShowAddQuote] = useState(false)
   const [aiLoading, setAiLoading] = useState(false)
   const [addingQuote, setAddingQuote] = useState(false)
+  const [uploadingInvoiceId, setUploadingInvoiceId] = useState<string | null>(null)
 
   // Driver assignment state
   const [assignedDriverId, setAssignedDriverId] = useState<string | null>(booking.driver_id ?? null)
@@ -390,6 +391,47 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, drivers,
     setShowAddQuote(false)
     await loadQuotes()
     setAddingQuote(false)
+  }
+
+  // Suppliers don't have their own login — staff receive the invoice by
+  // email/LINE/etc. and upload it here so the amount can be checked against
+  // the quote. File goes straight from the browser to Supabase Storage
+  // (private bucket), then we just record the path against the quote.
+  async function handleUploadInvoice(quoteId: string, file: File) {
+    setUploadingInvoiceId(quoteId)
+    try {
+      const supabase = createClient()
+      const path = `${booking.id}/${quoteId}-${Date.now()}-${file.name}`
+      const { error: uploadError } = await supabase.storage.from('supplier-invoices').upload(path, file, { upsert: true })
+      if (uploadError) throw new Error(uploadError.message)
+
+      const res = await fetch(`/api/bookings/${booking.id}/quotes/${quoteId}/invoice`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path }),
+      })
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        throw new Error(json.error ?? 'Failed to save invoice')
+      }
+
+      toast('Invoice uploaded!', 'success')
+      await loadQuotes()
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Failed to upload invoice', 'error')
+    } finally {
+      setUploadingInvoiceId(null)
+    }
+  }
+
+  async function handleViewInvoice(quoteId: string) {
+    const res = await fetch(`/api/bookings/${booking.id}/quotes/${quoteId}/invoice`)
+    const json = await res.json().catch(() => ({}))
+    if (!res.ok || !json.url) {
+      toast(json.error ?? 'Could not open invoice', 'error')
+      return
+    }
+    window.open(json.url, '_blank')
   }
 
   async function generateDrafts() {
@@ -1073,6 +1115,26 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, drivers,
                           </p>
                         )}
                       </div>
+                      {q.invoice_path ? (
+                        <button onClick={() => handleViewInvoice(q.id)} className="btn-secondary text-xs py-1 px-2.5 shrink-0">
+                          📎 Invoice
+                        </button>
+                      ) : (
+                        <label className="btn-secondary text-xs py-1 px-2.5 shrink-0 cursor-pointer">
+                          {uploadingInvoiceId === q.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Upload Invoice'}
+                          <input
+                            type="file"
+                            accept="image/*,.pdf"
+                            className="hidden"
+                            disabled={uploadingInvoiceId === q.id}
+                            onChange={(e) => {
+                              const file = e.target.files?.[0]
+                              if (file) handleUploadInvoice(q.id, file)
+                              e.target.value = ''
+                            }}
+                          />
+                        </label>
+                      )}
                       {!q.is_selected && booking.status !== 'completed' && (
                         <button onClick={() => handleSelectQuote(q.id)} className="btn-secondary text-xs py-1 px-2.5 shrink-0">
                           Select
