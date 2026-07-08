@@ -88,21 +88,6 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // TEMPORARILY DISABLED: same Supabase platform outage noted in
-      // app/(public)/book/page.tsx — the RPC this depends on is currently
-      // unreachable, so enforcing it here would hard-block every real
-      // guest booking. Restore this block once Supabase confirms their API
-      // layer is picking up schema changes again.
-      // const normalizedEmail = String(body.guest_email).trim().toLowerCase()
-      // const { data: consumed } = await adminClient.rpc('fleetflow_consume_email_verification', {
-      //   p_email: normalizedEmail,
-      // })
-      // if (!consumed) {
-      //   return NextResponse.json(
-      //     { error: 'Please verify your email address before submitting your booking.' },
-      //     { status: 403 }
-      //   )
-      // }
     } else {
       // Drafts can skip almost everything, but we still need an email —
       // it's the only way a guest can find their way back to an unfinished
