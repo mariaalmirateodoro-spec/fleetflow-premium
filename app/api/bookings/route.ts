@@ -40,13 +40,32 @@ export async function POST(request: NextRequest) {
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const body = await request.json()
+
+    // `is_draft` is pulled out of the insert payload — the staff "New
+    // Booking" modal always sends it explicitly (true or false), and
+    // writing it directly here hits the same PostgREST schema-cache bug
+    // that was blocking guest draft bookings (ticket SU-415685): "Could not
+    // find the 'is_draft' column of 'bookings' in the schema cache", even
+    // though the column exists. False is the column's own DB default, so
+    // leaving it out is free; true gets set right after via a small RPC
+    // that writes the column with plain SQL inside the database instead of
+    // going through PostgREST's column-aware insert parsing.
+    const { is_draft, ...bodyWithoutDraft } = body
+    const isDraft = is_draft === true
+
     const { data, error } = await supabase
       .from('bookings')
-      .insert({ ...body, created_by: user.id })
+      .insert({ ...bodyWithoutDraft, created_by: user.id })
       .select()
       .single()
 
     if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+
+    if (isDraft) {
+      const { error: draftError } = await adminClient().rpc('fleetflow_set_is_draft', { p_id: data.id, p_is_draft: true })
+      if (draftError) console.error('[bookings] failed to set is_draft:', draftError)
+      else data.is_draft = true
+    }
 
     // Notify managers
     await notifyManagers(

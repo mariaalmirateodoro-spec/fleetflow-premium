@@ -49,12 +49,21 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     return NextResponse.json({ error: 'Only admins and managers can change the final cost.' }, { status: 403 })
   }
 
+  // `is_draft` is pulled out of the update payload before it ever reaches
+  // supabase-js — the staff "Edit Booking" modal always sends it explicitly
+  // (true or false), and writing it directly (or selecting it by name) hits
+  // the same PostgREST schema-cache bug that was blocking guest draft
+  // bookings (ticket SU-415685). It's read/written separately below via a
+  // small RPC that runs plain SQL inside the database instead of going
+  // through PostgREST's column-aware request parsing.
+  const { is_draft: newIsDraft, ...bodyWithoutDraft } = body
+
   // Fetch current values for anything we might need to audit or compare against.
   // Includes every field the staff "Edit Booking" form can send, so the
   // catch-all diff below only reports fields that actually changed.
   const { data: existing } = await admin
     .from('bookings')
-    .select('driver_id, final_cost_usd, guest_email, guest_name, reference_number, pickup_location, dropoff_location, pickup_datetime, dropoff_datetime, vehicle_type, vehicle_plate, vehicle_model, guest_nationality, guest_count, guest_phone, guest_line_id, driver_required, budget_usd, notes, special_requests, is_draft')
+    .select('driver_id, final_cost_usd, guest_email, guest_name, reference_number, pickup_location, dropoff_location, pickup_datetime, dropoff_datetime, vehicle_type, vehicle_plate, vehicle_model, guest_nationality, guest_count, guest_phone, guest_line_id, driver_required, budget_usd, notes, special_requests')
     .eq('id', params.id)
     .single()
 
@@ -78,12 +87,21 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   // Use admin client to bypass RLS for booking updates
   const { data, error } = await admin
     .from('bookings')
-    .update(body)
+    .update(bodyWithoutDraft)
     .eq('id', params.id)
     .select()
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+
+  if (newIsDraft !== undefined) {
+    const { error: draftError } = await admin.rpc('fleetflow_set_is_draft', {
+      p_id: params.id,
+      p_is_draft: newIsDraft === true,
+    })
+    if (draftError) console.error('[bookings] failed to set is_draft:', draftError)
+    else data.is_draft = newIsDraft === true
+  }
 
   // Audit trail — only for the fields that matter for accountability.
   const actorName = profile?.full_name || user.email || 'Unknown'
