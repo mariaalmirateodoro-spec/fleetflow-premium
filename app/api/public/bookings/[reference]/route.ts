@@ -47,7 +47,7 @@ export async function PATCH(
 
     let verificationId: string | null = null
     if (finalize) {
-      const required = ['guest_name', 'guest_nationality', 'guest_count', 'pickup_location', 'dropoff_location', 'pickup_datetime', 'vehicle_type', 'guest_phone', 'guest_email']
+      const required = ['guest_name', 'guest_count', 'pickup_location', 'dropoff_location', 'pickup_datetime', 'vehicle_type', 'guest_phone', 'guest_email']
       for (const field of required) {
         if (!body[field]) {
           return NextResponse.json({ error: `Missing required field: ${field}` }, { status: 400 })
@@ -111,7 +111,7 @@ export async function PATCH(
             user_id: user.id,
             type: 'new_booking',
             title: '🚗 New Guest Booking',
-            message: `${data.guest_name} (${data.guest_nationality}) submitted a booking request — ${data.pickup_location} → ${data.dropoff_location}. Ref: ${data.reference_number}`,
+            message: `${data.guest_name} submitted a booking request — ${data.pickup_location} → ${data.dropoff_location}. Ref: ${data.reference_number}`,
             booking_id: data.id,
           }))
         )

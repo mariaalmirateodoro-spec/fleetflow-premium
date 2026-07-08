@@ -8,7 +8,6 @@ import { vehicleLabels } from '@/lib/utils'
 import type { Booking, CreateBookingInput, Profile, Supplier, VehicleType } from '@/types'
 
 const VEHICLE_TYPES: VehicleType[] = ['sedan', 'suv', 'van', 'minibus', 'luxury', 'pickup']
-const NATIONALITIES = ['Japanese', 'Chinese', 'Korean', 'American', 'British', 'German', 'French', 'Australian', 'Canadian', 'Indian', 'UAE', 'Saudi', 'Mexican', 'Egyptian', 'Other']
 
 // Converts a stored UTC timestamp into the local wall-clock value a
 // <input type="datetime-local"> expects. Using .slice(0, 16) on the raw UTC
@@ -58,7 +57,7 @@ export function BookingModal({ open, onClose, booking, suppliers, profile, onSuc
   const guestSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [form, setForm] = useState<CreateBookingInput & { special_requests?: string }>({
     guest_name: '',
-    guest_nationality: 'Japanese',
+    guest_nationality: null as string | null,
     guest_count: 1,
     guest_phone: '',
     guest_email: '',
@@ -275,18 +274,10 @@ export function BookingModal({ open, onClose, booking, suppliers, profile, onSuc
         )}
 
         {/* Guest info */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div className="col-span-2 sm:col-span-1">
-            <label className="block text-xs text-slate-400 mb-1.5 font-medium">Guest Name *</label>
-            <input value={form.guest_name} onChange={(e) => update('guest_name', e.target.value)}
-              placeholder="Full name" required className="input-dark" />
-          </div>
-          <div>
-            <label className="block text-xs text-slate-400 mb-1.5 font-medium">Nationality *</label>
-            <select value={form.guest_nationality} onChange={(e) => update('guest_nationality', e.target.value)} className="input-dark">
-              {NATIONALITIES.map((n) => <option key={n}>{n}</option>)}
-            </select>
-          </div>
+        <div>
+          <label className="block text-xs text-slate-400 mb-1.5 font-medium">Guest Name *</label>
+          <input value={form.guest_name} onChange={(e) => update('guest_name', e.target.value)}
+            placeholder="Full name" required className="input-dark" />
         </div>
 
         {/* Contact info */}

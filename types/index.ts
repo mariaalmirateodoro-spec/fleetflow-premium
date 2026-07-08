@@ -58,7 +58,7 @@ export interface Booking {
   id: string
   reference_number: string
   guest_name: string
-  guest_nationality: string
+  guest_nationality: string | null
   guest_count: number
   guest_phone: string | null
   guest_email: string | null
@@ -149,7 +149,7 @@ export interface Notification {
 
 export interface CreateBookingInput {
   guest_name: string
-  guest_nationality: string
+  guest_nationality?: string | null
   guest_count: number
   guest_phone?: string
   guest_email?: string

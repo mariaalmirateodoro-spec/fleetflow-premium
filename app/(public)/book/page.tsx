@@ -34,7 +34,6 @@ function BookingForm() {
   const [form, setForm] = useState({
     vehicle_type: (searchParams.get('type') ?? 'sedan') as VehicleType,
     guest_name: '',
-    guest_nationality: '',
     guest_count: '1',
     guest_phone: '',
     guest_email: '',
@@ -155,7 +154,6 @@ function BookingForm() {
     setForm((f) => ({
       ...f,
       guest_name: f.guest_name || returningGuest.guest_name || f.guest_name,
-      guest_nationality: f.guest_nationality || returningGuest.guest_nationality || f.guest_nationality,
       guest_phone: f.guest_phone || returningGuest.guest_phone || f.guest_phone,
       vehicle_type: returningGuest.vehicle_type ?? f.vehicle_type,
     }))
@@ -185,7 +183,6 @@ function BookingForm() {
 
     return {
       guest_name: form.guest_name,
-      guest_nationality: form.guest_nationality,
       guest_count: form.guest_count ? parseInt(form.guest_count) : undefined,
       guest_phone: form.guest_phone,
       guest_email: form.guest_email,
@@ -264,7 +261,6 @@ function BookingForm() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           guest_name: form.guest_name,
-          guest_nationality: form.guest_nationality,
           guest_count: parseInt(form.guest_count),
           guest_phone: form.guest_phone,
           guest_email: form.guest_email,
@@ -574,27 +570,15 @@ function BookingForm() {
         <div className="p-5 rounded-2xl border border-white/8 bg-white/3 space-y-4">
           <h2 className="font-semibold text-white">Passenger information</h2>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className={labelCls}>Full name *</label>
-              <input
-                required
-                className={inputCls}
-                placeholder="e.g. John Smith"
-                value={form.guest_name}
-                onChange={(e) => set('guest_name', e.target.value)}
-              />
-            </div>
-            <div>
-              <label className={labelCls}>Nationality *</label>
-              <input
-                required
-                className={inputCls}
-                placeholder="e.g. American"
-                value={form.guest_nationality}
-                onChange={(e) => set('guest_nationality', e.target.value)}
-              />
-            </div>
+          <div>
+            <label className={labelCls}>Full name *</label>
+            <input
+              required
+              className={inputCls}
+              placeholder="e.g. John Smith"
+              value={form.guest_name}
+              onChange={(e) => set('guest_name', e.target.value)}
+            />
           </div>
 
           <div>

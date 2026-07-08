@@ -49,7 +49,6 @@ export function DraftResumeForm({ booking }: Props) {
 
   const [form, setForm] = useState({
     guest_name: booking.guest_name ?? '',
-    guest_nationality: booking.guest_nationality ?? '',
     guest_count: String(booking.guest_count ?? 1),
     guest_phone: booking.guest_phone ?? '',
     guest_email: booking.guest_email ?? '',
@@ -71,7 +70,6 @@ export function DraftResumeForm({ booking }: Props) {
       : null
     return {
       guest_name: form.guest_name,
-      guest_nationality: form.guest_nationality,
       guest_count: form.guest_count ? parseInt(form.guest_count) : undefined,
       guest_phone: form.guest_phone,
       guest_email: form.guest_email,
@@ -160,7 +158,7 @@ export function DraftResumeForm({ booking }: Props) {
               <label className={labelCls}>Drop-off location</label>
               <LocationInput inputClassName={inputCls} value={form.dropoff_location} onChange={(v) => set('dropoff_location', v)} placeholder="e.g. Makati CBD, BGC office" />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className={labelCls}>Pickup date</label>
                 <input type="date" className={inputCls} value={form.pickup_date} onChange={(e) => set('pickup_date', e.target.value)} />
@@ -184,15 +182,9 @@ export function DraftResumeForm({ booking }: Props) {
 
           <div className="p-5 rounded-2xl border border-white/8 bg-white/3 space-y-4">
             <h2 className="font-semibold text-white">Passenger information</h2>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className={labelCls}>Full name</label>
-                <input className={inputCls} value={form.guest_name} onChange={(e) => set('guest_name', e.target.value)} placeholder="e.g. John Smith" />
-              </div>
-              <div>
-                <label className={labelCls}>Nationality</label>
-                <input className={inputCls} value={form.guest_nationality} onChange={(e) => set('guest_nationality', e.target.value)} placeholder="e.g. American" />
-              </div>
+            <div>
+              <label className={labelCls}>Full name</label>
+              <input className={inputCls} value={form.guest_name} onChange={(e) => set('guest_name', e.target.value)} placeholder="e.g. John Smith" />
             </div>
             <div>
               <label className={labelCls}>Number of passengers</label>
