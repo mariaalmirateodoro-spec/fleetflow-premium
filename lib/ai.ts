@@ -123,7 +123,7 @@ I hope this message finds you well. I am writing on behalf of our guest relation
 
 BOOKING DETAILS:
 • Reference: ${booking.reference_number}
-• Guest Name: ${booking.guest_name} (${booking.guest_nationality})
+• Guest Name: ${booking.guest_name}${booking.guest_nationality ? ` (${booking.guest_nationality})` : ''}
 • Guest Count: ${booking.guest_count} passenger${booking.guest_count > 1 ? 's' : ''}
 • Vehicle Type: ${booking.vehicle_type.charAt(0).toUpperCase() + booking.vehicle_type.slice(1)}
 • Driver Required: ${booking.driver_required ? 'Yes' : 'No'}
@@ -194,7 +194,7 @@ export function generateViberMessage(booking: Booking, supplier: Supplier): stri
 We have a transport booking and would like your quote:
 
 📋 Ref: ${booking.reference_number}
-👤 Guest: ${booking.guest_name} (${booking.guest_nationality}) — ${booking.guest_count} pax
+👤 Guest: ${booking.guest_name}${booking.guest_nationality ? ` (${booking.guest_nationality})` : ''} — ${booking.guest_count} pax
 🚗 Vehicle: ${vehicleLabel}
 ${tripDetails}${booking.budget_usd ? `\n💰 Budget: PHP ${booking.budget_usd}` : ''}${booking.special_requests ? `\n⭐ Special Requests: ${booking.special_requests}` : ''}${booking.notes ? `\n📝 Notes: ${booking.notes}` : ''}
 
@@ -348,5 +348,5 @@ export async function summarizeBooking(booking: Booking): Promise<string> {
   const daysUntil = Math.ceil((date.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
   const timeframe = daysUntil > 0 ? `in ${daysUntil} day${daysUntil > 1 ? 's' : ''}` : 'in the past'
 
-  return `Booking ${booking.reference_number}: ${booking.guest_name} (${booking.guest_nationality}) — ${booking.guest_count} guest${booking.guest_count > 1 ? 's' : ''} — requires a ${booking.vehicle_type}${booking.driver_required ? ' with driver' : ''} from ${booking.pickup_location} to ${booking.dropoff_location}, ${timeframe}. Status: ${booking.status.toUpperCase()}${booking.budget_usd ? `. Budget: PHP ${booking.budget_usd}` : ''}.${booking.notes ? ` Notes: ${booking.notes}` : ''}`
+  return `Booking ${booking.reference_number}: ${booking.guest_name}${booking.guest_nationality ? ` (${booking.guest_nationality})` : ''} — ${booking.guest_count} guest${booking.guest_count > 1 ? 's' : ''} — requires a ${booking.vehicle_type}${booking.driver_required ? ' with driver' : ''} from ${booking.pickup_location} to ${booking.dropoff_location}, ${timeframe}. Status: ${booking.status.toUpperCase()}${booking.budget_usd ? `. Budget: PHP ${booking.budget_usd}` : ''}.${booking.notes ? ` Notes: ${booking.notes}` : ''}`
 }

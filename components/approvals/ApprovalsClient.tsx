@@ -136,7 +136,7 @@ export function ApprovalsClient({ pendingBookings, recentApprovals, profile, sup
                             {quotes.length > 0 && <Badge variant="info" className="text-[10px]">{quotes.length} quote{quotes.length > 1 ? 's' : ''}</Badge>}
                           </div>
                           <p className="text-sm font-semibold text-white mt-0.5">{booking.guest_name}</p>
-                          <p className="text-xs text-slate-400">{booking.guest_nationality} · {booking.guest_count} guest{booking.guest_count > 1 ? 's' : ''}</p>
+                          <p className="text-xs text-slate-400">{booking.guest_nationality ? `${booking.guest_nationality} · ` : ''}{booking.guest_count} guest{booking.guest_count > 1 ? 's' : ''}</p>
                         </div>
                       </div>
 

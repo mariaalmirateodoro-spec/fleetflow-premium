@@ -18,18 +18,19 @@ export async function PATCH(
   { params }: { params: { reference: string } }
 ) {
   try {
-    const anonClient = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      { cookies: { getAll: () => [], setAll: () => {} } }
-    )
     const adminClient = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!,
       { cookies: { getAll: () => [], setAll: () => {} } }
     )
 
-    const { data: existing, error: fetchError } = await anonClient
+    // Looked up with the service-role client, not the anon-key session client —
+    // this is a public, unauthenticated endpoint (a guest with just their
+    // reference_number), so it can't rely on an RLS policy scoped to a logged-in
+    // user. The `.eq('reference_number', ...)` filter here is what actually
+    // limits this to one row; the DB no longer has a broad anon-readable
+    // bookings policy to lean on (see supabase/patch_lockdown_rls.sql).
+    const { data: existing, error: fetchError } = await adminClient
       .from('bookings')
       .select('id, is_draft')
       .eq('reference_number', params.reference.toUpperCase())
