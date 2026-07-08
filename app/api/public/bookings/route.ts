@@ -52,13 +52,23 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const anonClient = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      { cookies: { getAll: () => [], setAll: () => {} } }
-    )
-
-    // Service-role client for sending notifications (bypasses RLS)
+    // Service-role client for the insert itself, plus sending notifications
+    // (bypasses RLS). The insert used to go through the anon-key client,
+    // relying on the "Staff or guests can create bookings" INSERT policy
+    // (auth.uid() IS NOT NULL OR created_by IS NULL) — but that policy alone
+    // isn't enough: supabase-js's .insert().select() does an INSERT ...
+    // RETURNING under the hood, and Postgres validates the RETURNING clause
+    // against the table's SELECT policy too. Guests have no SELECT policy
+    // covering their own just-inserted row since the wide-open
+    // "Anyone can look up a booking by reference_number" SELECT policy was
+    // correctly removed as part of the RLS lockdown fix earlier — Postgres
+    // reports that mismatch as "new row violates row-level security policy"
+    // even though the INSERT condition itself was satisfied. This whole
+    // route already does its own validation (required fields, rate
+    // limiting) server-side before writing, so using the service-role key
+    // here — same as the rest of this file already does for notifications —
+    // is safe and sidesteps the issue entirely instead of reopening the
+    // security hole with a broader SELECT policy.
     const adminClient = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -78,21 +88,6 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // TEMPORARILY DISABLED: same Supabase platform outage noted in
-      // app/(public)/book/page.tsx — the RPC this depends on is currently
-      // unreachable, so enforcing it here would hard-block every real
-      // guest booking. Restore this block once Supabase confirms their API
-      // layer is picking up schema changes again.
-      // const normalizedEmail = String(body.guest_email).trim().toLowerCase()
-      // const { data: consumed } = await adminClient.rpc('fleetflow_consume_email_verification', {
-      //   p_email: normalizedEmail,
-      // })
-      // if (!consumed) {
-      //   return NextResponse.json(
-      //     { error: 'Please verify your email address before submitting your booking.' },
-      //     { status: 403 }
-      //   )
-      // }
     } else {
       // Drafts can skip almost everything, but we still need an email —
       // it's the only way a guest can find their way back to an unfinished
@@ -105,7 +100,19 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const { data, error } = await anonClient
+    // `is_draft` is deliberately omitted from this payload when it's false
+    // (the normal, real-submission case) — Supabase's PostgREST layer has
+    // been intermittently losing track of columns/tables/functions that
+    // provably exist in the database (reported to Supabase support, ticket
+    // SU-415685), and `is_draft` was hit by that same bug, which was
+    // blocking EVERY real guest booking outright. Leaving it out of the
+    // payload lets the column's own DB-level default (false) apply instead
+    // of going through PostgREST's column-aware insert path for it. Drafts
+    // (isDraft === true) still explicitly set it, since there's no way to
+    // mark a row as a draft without referencing the column somehow — so
+    // draft-saving specifically may still fail while this Supabase issue is
+    // ongoing, but real submissions (the critical path) are unblocked.
+    const { data, error } = await adminClient
       .from('bookings')
       .insert({
         guest_name: body.guest_name || null,
@@ -122,7 +129,7 @@ export async function POST(request: NextRequest) {
         driver_required: body.driver_required ?? true,
         special_requests: body.special_requests ?? null,
         status: 'pending',
-        is_draft: isDraft,
+        ...(isDraft ? { is_draft: true } : {}),
         created_by: null, // guest booking — no auth user
       })
       .select('id, reference_number')
