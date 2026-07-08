@@ -41,6 +41,17 @@ export async function middleware(request: NextRequest) {
 
   const { pathname } = request.nextUrl
 
+  // Bare domain root has no page of its own — send guests to the fleet
+  // showcase (a public-facing landing page) and staff straight to their
+  // dashboard, instead of falling through to the /login redirect below
+  // (which used to mean anyone who just typed the domain name, with no
+  // path, landed on a staff login screen).
+  if (pathname === '/') {
+    const url = request.nextUrl.clone()
+    url.pathname = user ? '/dashboard' : '/fleet'
+    return NextResponse.redirect(url)
+  }
+
   // Public routes that don't need auth
   const publicRoutes = ['/login', '/auth/callback', '/fleet', '/book']
   const isPublicRoute =
