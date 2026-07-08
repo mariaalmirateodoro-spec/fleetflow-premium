@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -7,9 +7,25 @@ export const metadata: Metadata = {
     template: '%s | FleetFlow Premium',
   },
   description: 'Premium HR/Admin car rental management system for foreign guest transportation.',
+  manifest: '/manifest.webmanifest',
   icons: {
     icon: '/favicon.svg',
+    apple: '/apple-touch-icon.png',
   },
+  // Lets iOS Safari's "Add to Home Screen" open the app in standalone mode
+  // (no browser chrome/address bar) instead of just bookmarking a page —
+  // iOS mostly ignores manifest.webmanifest and reads these tags instead.
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'FleetFlow',
+  },
+}
+
+export const viewport: Viewport = {
+  themeColor: '#090e1a',
+  width: 'device-width',
+  initialScale: 1,
 }
 
 export default function RootLayout({
