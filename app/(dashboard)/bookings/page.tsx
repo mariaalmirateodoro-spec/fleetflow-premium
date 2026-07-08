@@ -13,13 +13,17 @@ export default async function BookingsPage() {
 
   const supabase = createClient()
 
-  const [{ data: bookings, error: bookingsError }, { data: suppliers }, { data: drivers }] = await Promise.all([
+  const [{ data: bookings, error: bookingsError }, { data: suppliers }, { data: drivers }, bareCheck] = await Promise.all([
     supabase
       .from('bookings')
       .select('*, profiles!bookings_created_by_fkey(full_name), suppliers(company_name), drivers(id,full_name,phone,license_number), feedback(rating,comment)')
       .order('created_at', { ascending: false }),
     supabase.from('suppliers').select('*').eq('is_available', true).order('company_name'),
     supabase.from('drivers').select('*').order('full_name'),
+    // Temporary diagnostic #2: a bare query with NO joined/embedded tables,
+    // to isolate whether the joins (profiles/suppliers/drivers/feedback)
+    // are what's silently zeroing the result, vs. base-table RLS itself.
+    supabase.from('bookings').select('id', { count: 'exact', head: true }),
   ])
 
   // Temporary diagnostic: this query previously failed silently (data ?? []
@@ -30,6 +34,11 @@ export default async function BookingsPage() {
   if (bookingsError) {
     console.error('[bookings/page] query failed:', bookingsError)
   }
+  console.error('[bookings/page] diagnostic:', {
+    joinedRowCount: bookings?.length ?? null,
+    bareRowCount: bareCheck.count,
+    bareError: bareCheck.error,
+  })
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
