@@ -18,27 +18,18 @@ export async function POST(request: NextRequest) {
       { cookies: { getAll: () => [], setAll: () => {} } }
     )
 
-    // Most recent, unexpired, unused code for this email
-    const { data: match, error } = await adminClient
-      .from('email_verifications')
-      .select('id, code, expires_at, used')
-      .eq('email', normalizedEmail)
-      .eq('used', false)
-      .gt('expires_at', new Date().toISOString())
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
+    // Calls a DB function via RPC instead of querying the table directly —
+    // see supabase/patch_email_verification_rpc.sql for why.
+    const { data: confirmed, error } = await adminClient.rpc('fleetflow_confirm_email_verification', {
+      p_email: normalizedEmail,
+      p_code: normalizedCode,
+    })
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-    if (!match || match.code !== normalizedCode) {
+    if (!confirmed) {
       return NextResponse.json({ error: 'Incorrect or expired code. Please try again or request a new one.' }, { status: 400 })
     }
-
-    await adminClient
-      .from('email_verifications')
-      .update({ verified: true })
-      .eq('id', match.id)
 
     return NextResponse.json({ verified: true })
   } catch {
