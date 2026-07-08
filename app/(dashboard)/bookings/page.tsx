@@ -13,43 +13,30 @@ export default async function BookingsPage() {
 
   const supabase = createClient()
 
-  const [{ data: bookings, error: bookingsError }, { data: suppliers }, { data: drivers }, bareCheck] = await Promise.all([
+  // NOTE: the `feedback(...)` embed was removed here — PostgREST cannot
+  // find a FK relationship between bookings and feedback in production
+  // (feedback_booking_id_fkey is missing from the live schema; see
+  // supabase/patch_fix_feedback_fk.sql), which was making this ENTIRE
+  // query fail silently and show every booking as "No bookings found".
+  // Once that SQL patch has been run against production, the embed can
+  // be safely restored here.
+  const [{ data: bookings, error: bookingsError }, { data: suppliers }, { data: drivers }] = await Promise.all([
     supabase
       .from('bookings')
-      .select('*, profiles!bookings_created_by_fkey(full_name), suppliers(company_name), drivers(id,full_name,phone,license_number), feedback(rating,comment)')
+      .select('*, profiles!bookings_created_by_fkey(full_name), suppliers(company_name), drivers(id,full_name,phone,license_number)')
       .order('created_at', { ascending: false }),
     supabase.from('suppliers').select('*').eq('is_available', true).order('company_name'),
     supabase.from('drivers').select('*').order('full_name'),
-    // Temporary diagnostic #2: a bare query with NO joined/embedded tables,
-    // to isolate whether the joins (profiles/suppliers/drivers/feedback)
-    // are what's silently zeroing the result, vs. base-table RLS itself.
-    supabase.from('bookings').select('id', { count: 'exact', head: true }),
   ])
 
-  // Temporary diagnostic: this query previously failed silently (data ?? []
-  // swallowed whatever the real error was, showing a misleading "No bookings
-  // found" empty state instead of surfacing the actual problem). Logging
-  // server-side (visible in Vercel's function logs) and rendering it inline
-  // so it's visible without needing Vercel dashboard access.
   if (bookingsError) {
     console.error('[bookings/page] query failed:', bookingsError)
   }
-  console.error('[bookings/page] diagnostic:', {
-    joinedRowCount: bookings?.length ?? null,
-    bareRowCount: bareCheck.count,
-    bareError: bareCheck.error,
-  })
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <Topbar profile={profile} title="Bookings" subtitle="Manage all guest transport requests" />
       <div className="flex-1 overflow-y-auto p-6">
-        {bookingsError && (
-          <div className="mb-4 p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 text-sm font-mono whitespace-pre-wrap">
-            <p className="font-sans font-semibold text-red-200 mb-1">Bookings query failed — this banner is temporary, for diagnosis:</p>
-            {JSON.stringify(bookingsError, null, 2)}
-          </div>
-        )}
         <BookingsClient
           initialBookings={bookings ?? []}
           suppliers={suppliers ?? []}
