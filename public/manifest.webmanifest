@@ -2,7 +2,7 @@
   "name": "FleetFlow Premium",
   "short_name": "FleetFlow",
   "description": "Guest transport & car rental management",
-  "start_url": "/dashboard",
+  "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait-primary",
