@@ -13,31 +13,47 @@ export default async function BookingsPage() {
 
   const supabase = createClient()
 
-  const [{ data: bookings, error: bookingsError }, { data: suppliers }, { data: drivers }] = await Promise.all([
-    supabase
-      .from('bookings')
-      .select('*, profiles!bookings_created_by_fkey(full_name), suppliers(company_name), drivers(id,full_name,phone,license_number), feedback(rating,comment)')
-      .order('created_at', { ascending: false }),
-    supabase.from('suppliers').select('*').eq('is_available', true).order('company_name'),
-    supabase.from('drivers').select('*').order('full_name'),
-  ])
+  // `feedback` is deliberately NOT embedded via PostgREST's `feedback(...)`
+  // join syntax here. That relationship has twice gone "missing from the
+  // schema cache" in production (Supabase's API layer losing track of the
+  // feedback -> bookings foreign key after unrelated project maintenance,
+  // even though the constraint verifiably still exists in the database),
+  // silently zeroing out this ENTIRE query both times. Fetching feedback as
+  // a separate plain query and merging it in JS below has no dependency on
+  // PostgREST's relationship cache, so it can't be taken down by this again.
+  const [{ data: bookings, error: bookingsError }, { data: suppliers }, { data: drivers }, { data: feedbackRows }] =
+    await Promise.all([
+      supabase
+        .from('bookings')
+        .select('*, profiles!bookings_created_by_fkey(full_name), suppliers(company_name), drivers(id,full_name,phone,license_number)')
+        .order('created_at', { ascending: false }),
+      supabase.from('suppliers').select('*').eq('is_available', true).order('company_name'),
+      supabase.from('drivers').select('*').order('full_name'),
+      supabase.from('feedback').select('booking_id, rating, comment'),
+    ])
 
   if (bookingsError) {
     console.error('[bookings/page] query failed:', bookingsError)
   }
 
+  const feedbackByBooking = new Map<string, { rating: number; comment: string | null }[]>()
+  ;(feedbackRows ?? []).forEach((f) => {
+    const list = feedbackByBooking.get(f.booking_id) ?? []
+    list.push({ rating: f.rating, comment: f.comment })
+    feedbackByBooking.set(f.booking_id, list)
+  })
+
+  const bookingsWithFeedback = (bookings ?? []).map((b) => ({
+    ...b,
+    feedback: feedbackByBooking.get(b.id) ?? [],
+  }))
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <Topbar profile={profile} title="Bookings" subtitle="Manage all guest transport requests" />
       <div className="flex-1 overflow-y-auto p-6">
-        {bookingsError && (
-          <div className="mb-4 p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 text-sm font-mono whitespace-pre-wrap">
-            <p className="font-sans font-semibold text-red-200 mb-1">Bookings query failed — this banner is temporary, for diagnosis:</p>
-            {JSON.stringify(bookingsError, null, 2)}
-          </div>
-        )}
         <BookingsClient
-          initialBookings={bookings ?? []}
+          initialBookings={bookingsWithFeedback}
           suppliers={suppliers ?? []}
           drivers={drivers ?? []}
           profile={profile}

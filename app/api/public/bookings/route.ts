@@ -79,27 +79,21 @@ export async function POST(request: NextRequest) {
       }
 
       // Real submissions require a verified email — drafts are exempt so
-      // saving progress stays frictionless.
+      // saving progress stays frictionless. Goes through an RPC function
+      // (see supabase/patch_email_verification_rpc.sql) instead of
+      // querying the table directly — that table has repeatedly dropped
+      // out of PostgREST's schema cache in production.
       const normalizedEmail = String(body.guest_email).trim().toLowerCase()
-      const { data: verification } = await adminClient
-        .from('email_verifications')
-        .select('id')
-        .eq('email', normalizedEmail)
-        .eq('verified', true)
-        .eq('used', false)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
+      const { data: consumed } = await adminClient.rpc('fleetflow_consume_email_verification', {
+        p_email: normalizedEmail,
+      })
 
-      if (!verification) {
+      if (!consumed) {
         return NextResponse.json(
           { error: 'Please verify your email address before submitting your booking.' },
           { status: 403 }
         )
       }
-
-      // Consume it so it can't be reused for a different booking
-      await adminClient.from('email_verifications').update({ used: true }).eq('id', verification.id)
     } else {
       // Drafts can skip almost everything, but we still need an email —
       // it's the only way a guest can find their way back to an unfinished

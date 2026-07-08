@@ -51,10 +51,12 @@ export async function POST(request: NextRequest) {
     const code = generateCode()
     const expiresAt = new Date(Date.now() + CODE_EXPIRY_MS).toISOString()
 
-    const { error } = await adminClient.from('email_verifications').insert({
-      email: normalizedEmail,
-      code,
-      expires_at: expiresAt,
+    // Calls a DB function via RPC instead of inserting into the table
+    // directly — see supabase/patch_email_verification_rpc.sql for why.
+    const { error } = await adminClient.rpc('fleetflow_send_email_verification', {
+      p_email: normalizedEmail,
+      p_code: code,
+      p_expires_at: expiresAt,
     })
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
