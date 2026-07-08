@@ -1,10 +1,11 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Bell, X, Check } from 'lucide-react'
+import { Bell, X, Check, Menu } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { cn, timeAgo } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
+import { useMobileSidebar } from './MobileSidebarContext'
 import type { Notification, Profile } from '@/types'
 
 interface TopbarProps {
@@ -15,6 +16,7 @@ interface TopbarProps {
 
 export function Topbar({ profile, title, subtitle }: TopbarProps) {
   const router = useRouter()
+  const { toggle } = useMobileSidebar()
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [showNotifs, setShowNotifs] = useState(false)
   const [unreadCount, setUnreadCount] = useState(0)
@@ -83,15 +85,24 @@ export function Topbar({ profile, title, subtitle }: TopbarProps) {
   }
 
   return (
-    <header className="sticky top-0 z-30 flex items-center justify-between px-6 py-4 border-b border-white/8 glass">
+    <header className="sticky top-0 z-30 flex items-center justify-between px-4 sm:px-6 py-4 border-b border-white/8 glass gap-3">
       {/* Page title */}
-      <div>
-        <h1 className="text-lg font-display font-bold text-white">{title}</h1>
-        {subtitle && <p className="text-xs text-slate-400 mt-0.5">{subtitle}</p>}
+      <div className="flex items-center gap-3 min-w-0">
+        <button
+          onClick={toggle}
+          className="md:hidden shrink-0 p-2 -ml-1 rounded-xl glass hover:bg-white/10 text-slate-300 hover:text-white transition-all"
+          aria-label="Open menu"
+        >
+          <Menu className="w-5 h-5" />
+        </button>
+        <div className="min-w-0">
+          <h1 className="text-lg font-display font-bold text-white truncate">{title}</h1>
+          {subtitle && <p className="text-xs text-slate-400 mt-0.5 truncate">{subtitle}</p>}
+        </div>
       </div>
 
       {/* Actions */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 shrink-0">
         {/* Notification bell */}
         <div className="relative">
           <button
