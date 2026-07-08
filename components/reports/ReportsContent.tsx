@@ -270,6 +270,7 @@ export function ReportsContent({ monthlyData, topSuppliers, savingsData, frequen
             <div className="px-5 py-3 border-b border-white/8">
               <h3 className="text-sm font-semibold text-white">Driver Performance</h3>
             </div>
+            <p className="md:hidden text-[11px] text-slate-500 text-center pt-2 pb-1">← Swipe table to see more columns →</p>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -302,6 +303,7 @@ export function ReportsContent({ monthlyData, topSuppliers, savingsData, frequen
           <div className="px-5 py-3 border-b border-white/8">
             <h3 className="text-sm font-semibold text-white">Supplier Performance Summary</h3>
           </div>
+          <p className="md:hidden text-[11px] text-slate-500 text-center pt-2 pb-1">← Swipe table to see more columns →</p>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>

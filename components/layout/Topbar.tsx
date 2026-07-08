@@ -119,8 +119,13 @@ export function Topbar({ profile, title, subtitle }: TopbarProps) {
 
           {showNotifs && (
             <>
-              <div className="fixed inset-0 z-10" onClick={() => setShowNotifs(false)} />
-              <div className="absolute right-0 top-full mt-2 w-80 glass rounded-2xl border border-white/10 shadow-2xl z-20 animate-slide-down overflow-hidden">
+              <div className="fixed inset-0 z-40" onClick={() => setShowNotifs(false)} />
+              {/* Solid background (not the translucent `glass` utility) — on
+                  mobile this sits directly over dense page content (tables,
+                  buttons), and the blur/8%-opacity glass effect wasn't
+                  enough contrast, so text behind it bled through and made
+                  the panel unreadable. */}
+              <div className="absolute right-0 top-full mt-2 w-80 max-w-[calc(100vw-2rem)] bg-[#141a2e] rounded-2xl border border-white/10 shadow-2xl z-50 animate-slide-down overflow-hidden">
                 <div className="flex items-center justify-between px-4 py-3 border-b border-white/8">
                   <span className="text-sm font-semibold text-white">Notifications</span>
                   <div className="flex items-center gap-2">

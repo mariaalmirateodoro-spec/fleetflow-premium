@@ -534,7 +534,9 @@ export function BookingsClient({ initialBookings, suppliers, drivers, profile }:
             ) : undefined}
           />
         ) : (
-          <div className="overflow-x-auto">
+          <>
+            <p className="md:hidden text-[11px] text-slate-500 text-center pb-2">← Swipe table to see more columns →</p>
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-white/8 text-xs text-slate-500 uppercase tracking-wider">
@@ -654,7 +656,8 @@ export function BookingsClient({ initialBookings, suppliers, drivers, profile }:
                 })}
               </tbody>
             </table>
-          </div>
+            </div>
+          </>
         )}
       </div>
 

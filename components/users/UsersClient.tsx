@@ -110,6 +110,7 @@ export function UsersClient({ users: initialUsers, currentUser }: Props) {
 
       {/* Users table */}
       <div className="card p-0 overflow-hidden">
+        <p className="md:hidden text-[11px] text-slate-500 text-center pt-3 pb-1">← Swipe table to see more columns →</p>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
