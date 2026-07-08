@@ -1,11 +1,11 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { Bell, X, Check, Menu } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { cn, timeAgo } from '@/lib/utils'
-import { createClient } from '@/lib/supabase/client'
 import { useMobileSidebar } from './MobileSidebarContext'
+import { useNotifications } from './NotificationsContext'
 import type { Notification, Profile } from '@/types'
 
 interface TopbarProps {
@@ -17,56 +17,13 @@ interface TopbarProps {
 export function Topbar({ profile, title, subtitle }: TopbarProps) {
   const router = useRouter()
   const { toggle } = useMobileSidebar()
-  const [notifications, setNotifications] = useState<Notification[]>([])
+  const { notifications, unreadCount, markAllRead, markRead } = useNotifications()
   const [showNotifs, setShowNotifs] = useState(false)
-  const [unreadCount, setUnreadCount] = useState(0)
-
-  useEffect(() => {
-    loadNotifications()
-    // Real-time subscription
-    const supabase = createClient()
-    const channel = supabase
-      .channel('notifications')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${profile.id}` },
-        () => loadNotifications()
-      )
-      .subscribe()
-    return () => { supabase.removeChannel(channel) }
-  }, [profile.id])
-
-  async function loadNotifications() {
-    const supabase = createClient()
-    const { data } = await supabase
-      .from('notifications')
-      .select('*')
-      .eq('user_id', profile.id)
-      .order('created_at', { ascending: false })
-      .limit(20)
-
-    if (data) {
-      setNotifications(data)
-      setUnreadCount(data.filter((n) => !n.is_read).length)
-    }
-  }
-
-  async function markAllRead() {
-    const supabase = createClient()
-    await supabase
-      .from('notifications')
-      .update({ is_read: true })
-      .eq('user_id', profile.id)
-      .eq('is_read', false)
-    loadNotifications()
-  }
 
   async function handleNotificationClick(n: Notification) {
     // Mark as read
     if (!n.is_read) {
-      const supabase = createClient()
-      await supabase.from('notifications').update({ is_read: true }).eq('id', n.id)
-      loadNotifications()
+      await markRead(n.id)
     }
     // Navigate to related booking if applicable
     if (n.booking_id) {

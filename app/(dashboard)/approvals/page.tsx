@@ -13,28 +13,33 @@ export default async function ApprovalsPage() {
   if (!['admin', 'manager'].includes(profile.role)) redirect('/dashboard')
 
   const supabase = createClient()
-  const { data: bookings } = await supabase
-    .from('bookings')
-    .select('*, profiles!bookings_created_by_fkey(full_name), suppliers(company_name), quotes(*, suppliers(company_name,rating))')
-    .in('status', ['quoted', 'pending'])
-    .order('created_at', { ascending: true })
 
-  // Embeds by column name (reviewer_id), not by guessing the generated FK
-  // constraint name — the approvals table only has reviewer_id (no
-  // approved_by column exists), so the old constraint-name reference here
-  // never matched anything and this query silently returned nothing every
-  // time, even when approvals existed.
-  const { data: recentApprovals } = await supabase
-    .from('approvals')
-    .select('*, profiles!reviewer_id(full_name), bookings(reference_number, guest_name)')
-    .order('created_at', { ascending: false })
-    .limit(10)
+  // These three queries don't depend on each other, so run them in parallel
+  // instead of one-after-another — was a 3-round-trip waterfall before.
+  const [{ data: bookings }, { data: recentApprovals }, { data: suppliers }] = await Promise.all([
+    supabase
+      .from('bookings')
+      .select('*, profiles!bookings_created_by_fkey(full_name), suppliers(company_name), quotes(*, suppliers(company_name,rating))')
+      .in('status', ['quoted', 'pending'])
+      .order('created_at', { ascending: true }),
 
-  const { data: suppliers } = await supabase
-    .from('suppliers')
-    .select('id, company_name, contact_person, phone, rating')
-    .eq('is_available', true)
-    .order('company_name', { ascending: true })
+    // Embeds by column name (reviewer_id), not by guessing the generated FK
+    // constraint name — the approvals table only has reviewer_id (no
+    // approved_by column exists), so the old constraint-name reference here
+    // never matched anything and this query silently returned nothing every
+    // time, even when approvals existed.
+    supabase
+      .from('approvals')
+      .select('*, profiles!reviewer_id(full_name), bookings(reference_number, guest_name)')
+      .order('created_at', { ascending: false })
+      .limit(10),
+
+    supabase
+      .from('suppliers')
+      .select('id, company_name, contact_person, phone, rating')
+      .eq('is_available', true)
+      .order('company_name', { ascending: true }),
+  ])
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
