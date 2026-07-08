@@ -52,13 +52,23 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const anonClient = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      { cookies: { getAll: () => [], setAll: () => {} } }
-    )
-
-    // Service-role client for sending notifications (bypasses RLS)
+    // Service-role client for the insert itself, plus sending notifications
+    // (bypasses RLS). The insert used to go through the anon-key client,
+    // relying on the "Staff or guests can create bookings" INSERT policy
+    // (auth.uid() IS NOT NULL OR created_by IS NULL) — but that policy alone
+    // isn't enough: supabase-js's .insert().select() does an INSERT ...
+    // RETURNING under the hood, and Postgres validates the RETURNING clause
+    // against the table's SELECT policy too. Guests have no SELECT policy
+    // covering their own just-inserted row since the wide-open
+    // "Anyone can look up a booking by reference_number" SELECT policy was
+    // correctly removed as part of the RLS lockdown fix earlier — Postgres
+    // reports that mismatch as "new row violates row-level security policy"
+    // even though the INSERT condition itself was satisfied. This whole
+    // route already does its own validation (required fields, rate
+    // limiting) server-side before writing, so using the service-role key
+    // here — same as the rest of this file already does for notifications —
+    // is safe and sidesteps the issue entirely instead of reopening the
+    // security hole with a broader SELECT policy.
     const adminClient = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -117,7 +127,7 @@ export async function POST(request: NextRequest) {
     // mark a row as a draft without referencing the column somehow — so
     // draft-saving specifically may still fail while this Supabase issue is
     // ongoing, but real submissions (the critical path) are unblocked.
-    const { data, error } = await anonClient
+    const { data, error } = await adminClient
       .from('bookings')
       .insert({
         guest_name: body.guest_name || null,
