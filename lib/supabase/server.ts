@@ -48,11 +48,24 @@ export function createClient() {
 // was previously uncached, so every single dashboard page navigation paid
 // for the full auth+profile round trip twice — a meaningful chunk of the
 // "switching pages feels slow" complaint.
+//
+// Uses getSession() (fast — decodes the session already present in cookies,
+// no network call) rather than getUser() (authoritative, but makes a real
+// round trip to Supabase's Auth server every time). This is safe here
+// specifically because middleware.ts already runs supabase.auth.getUser()
+// — the slow, network-verified check — on every single request that can
+// reach a page in this app (its matcher covers all routes), before this
+// code ever runs. By the time a Server Component executes, this exact
+// request has already passed that authoritative check, so re-verifying
+// again here would just be a second network round trip for no extra
+// security. Do not swap this back to getUser() without also removing (or
+// changing) the middleware check, or the "authoritative check happened
+// upstream" assumption breaks.
 export const getUser = cache(async function getUser() {
   const supabase = createClient()
-  const { data: { user }, error } = await supabase.auth.getUser()
-  if (error || !user) return null
-  return user
+  const { data: { session }, error } = await supabase.auth.getSession()
+  if (error || !session?.user) return null
+  return session.user
 })
 
 export const getProfile = cache(async function getProfile(): Promise<Profile | null> {

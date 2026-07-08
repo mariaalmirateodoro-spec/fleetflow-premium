@@ -13,17 +13,10 @@ export default async function BookingsPage() {
 
   const supabase = createClient()
 
-  // NOTE: the `feedback(...)` embed was removed here — PostgREST cannot
-  // find a FK relationship between bookings and feedback in production
-  // (feedback_booking_id_fkey is missing from the live schema; see
-  // supabase/patch_fix_feedback_fk.sql), which was making this ENTIRE
-  // query fail silently and show every booking as "No bookings found".
-  // Once that SQL patch has been run against production, the embed can
-  // be safely restored here.
   const [{ data: bookings, error: bookingsError }, { data: suppliers }, { data: drivers }] = await Promise.all([
     supabase
       .from('bookings')
-      .select('*, profiles!bookings_created_by_fkey(full_name), suppliers(company_name), drivers(id,full_name,phone,license_number)')
+      .select('*, profiles!bookings_created_by_fkey(full_name), suppliers(company_name), drivers(id,full_name,phone,license_number), feedback(rating,comment)')
       .order('created_at', { ascending: false }),
     supabase.from('suppliers').select('*').eq('is_available', true).order('company_name'),
     supabase.from('drivers').select('*').order('full_name'),

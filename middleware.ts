@@ -76,6 +76,11 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    // .webmanifest added here: it was previously falling through to the
+    // auth check below, so a guest's phone (not logged in) fetching this
+    // PWA metadata file got redirected to /login and received an HTML
+    // page instead of JSON — breaking "Add to Home Screen" for guests
+    // and showing as a manifest parse error in the console.
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|webmanifest)$).*)',
   ],
 }
