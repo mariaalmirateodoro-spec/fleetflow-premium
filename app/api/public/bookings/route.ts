@@ -100,42 +100,70 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // `is_draft` is deliberately omitted from this payload when it's false
-    // (the normal, real-submission case) — Supabase's PostgREST layer has
-    // been intermittently losing track of columns/tables/functions that
-    // provably exist in the database (reported to Supabase support, ticket
-    // SU-415685), and `is_draft` was hit by that same bug, which was
+    // `is_draft` is deliberately omitted from the direct insert below when
+    // it's false (the normal, real-submission case) — Supabase's PostgREST
+    // layer has been intermittently losing track of columns/tables/functions
+    // that provably exist in the database (reported to Supabase support,
+    // ticket SU-415685), and `is_draft` was hit by that same bug, which was
     // blocking EVERY real guest booking outright. Leaving it out of the
     // payload lets the column's own DB-level default (false) apply instead
-    // of going through PostgREST's column-aware insert path for it. Drafts
-    // (isDraft === true) still explicitly set it, since there's no way to
-    // mark a row as a draft without referencing the column somehow — so
-    // draft-saving specifically may still fail while this Supabase issue is
-    // ongoing, but real submissions (the critical path) are unblocked.
-    const { data, error } = await adminClient
-      .from('bookings')
-      .insert({
-        guest_name: body.guest_name || null,
-        guest_nationality: body.guest_nationality || null,
-        guest_count: body.guest_count ? Number(body.guest_count) : 1,
-        guest_phone: body.guest_phone || null,
-        guest_email: body.guest_email || null,
-        guest_line_id: body.guest_line_id ?? null,
-        pickup_location: body.pickup_location || null,
-        dropoff_location: body.dropoff_location || null,
-        pickup_datetime: body.pickup_datetime || null,
-        dropoff_datetime: body.dropoff_datetime ?? null,
-        vehicle_type: body.vehicle_type || 'sedan',
-        driver_required: body.driver_required ?? true,
-        special_requests: body.special_requests ?? null,
-        status: 'pending',
-        ...(isDraft ? { is_draft: true } : {}),
-        created_by: null, // guest booking — no auth user
-      })
-      .select('id, reference_number')
-      .single()
+    // of going through PostgREST's column-aware insert path for it.
+    //
+    // Drafts can't use that trick (they need is_draft = true), so they go
+    // through the fleetflow_create_draft_booking() RPC instead — the SQL
+    // inside that function runs directly in the database and never touches
+    // PostgREST's column-aware request parsing, sidestepping the cache bug
+    // for this path too.
+    let data: { id: string; reference_number: string } | null = null
+    let error: { message: string } | null = null
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    if (isDraft) {
+      const { data: rpcData, error: rpcError } = await adminClient
+        .rpc('fleetflow_create_draft_booking', {
+          p_guest_name: body.guest_name || null,
+          p_guest_nationality: body.guest_nationality || null,
+          p_guest_count: body.guest_count ? Number(body.guest_count) : 1,
+          p_guest_phone: body.guest_phone || null,
+          p_guest_email: body.guest_email || null,
+          p_guest_line_id: body.guest_line_id ?? null,
+          p_pickup_location: body.pickup_location || null,
+          p_dropoff_location: body.dropoff_location || null,
+          p_pickup_datetime: body.pickup_datetime || null,
+          p_dropoff_datetime: body.dropoff_datetime ?? null,
+          p_vehicle_type: body.vehicle_type || 'sedan',
+          p_driver_required: body.driver_required ?? true,
+          p_special_requests: body.special_requests ?? null,
+        })
+        .single()
+      data = rpcData as { id: string; reference_number: string } | null
+      error = rpcError
+    } else {
+      const { data: insertData, error: insertError } = await adminClient
+        .from('bookings')
+        .insert({
+          guest_name: body.guest_name || null,
+          guest_nationality: body.guest_nationality || null,
+          guest_count: body.guest_count ? Number(body.guest_count) : 1,
+          guest_phone: body.guest_phone || null,
+          guest_email: body.guest_email || null,
+          guest_line_id: body.guest_line_id ?? null,
+          pickup_location: body.pickup_location || null,
+          dropoff_location: body.dropoff_location || null,
+          pickup_datetime: body.pickup_datetime || null,
+          dropoff_datetime: body.dropoff_datetime ?? null,
+          vehicle_type: body.vehicle_type || 'sedan',
+          driver_required: body.driver_required ?? true,
+          special_requests: body.special_requests ?? null,
+          status: 'pending',
+          created_by: null, // guest booking — no auth user
+        })
+        .select('id, reference_number')
+        .single()
+      data = insertData
+      error = insertError
+    }
+
+    if (error || !data) return NextResponse.json({ error: error?.message ?? 'Failed to create booking' }, { status: 400 })
 
     // Drafts are just a save point — no staff notification yet, but we do send
     // a lightweight "here's how to get back to it" email since it's the only
