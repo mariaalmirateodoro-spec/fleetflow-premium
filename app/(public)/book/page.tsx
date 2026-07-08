@@ -228,10 +228,17 @@ function BookingForm() {
     e.preventDefault()
     setError('')
 
-    if (!emailVerified) {
-      setError('Please verify your email address before submitting your booking.')
-      return
-    }
+    // TEMPORARILY DISABLED: email verification is currently unusable because
+    // of a Supabase platform-side outage on the project's API layer (schema
+    // cache not recognizing objects — reported to Supabase support, not
+    // something fixable from this app). Blocking every guest booking on a
+    // broken third-party dependency is worse than skipping this check, so
+    // it's disabled until that's resolved. Restore the `if (!emailVerified)`
+    // guard once Supabase confirms it's fixed.
+    // if (!emailVerified) {
+    //   setError('Please verify your email address before submitting your booking.')
+    //   return
+    // }
 
     setLoading(true)
 
