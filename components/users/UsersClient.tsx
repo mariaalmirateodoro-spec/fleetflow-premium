@@ -38,6 +38,10 @@ export function UsersClient({ users: initialUsers, currentUser }: Props) {
     setLoading(false)
   }
 
+  // Role/status changes go through /api/users (instead of writing to Supabase
+  // directly from the browser) so they show up in the Activity Log — this is
+  // exactly the kind of action ("who changed whose permissions") that needs
+  // to be traceable.
   async function updateRole() {
     if (!editUser) return
     setLoading(true)
@@ -106,6 +110,7 @@ export function UsersClient({ users: initialUsers, currentUser }: Props) {
 
       {/* Users table */}
       <div className="card p-0 overflow-hidden">
+        <p className="md:hidden text-[11px] text-slate-500 text-center pt-3 pb-1">← Swipe table to see more columns →</p>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -202,4 +207,14 @@ export function UsersClient({ users: initialUsers, currentUser }: Props) {
             </div>
             <div className="flex gap-2 justify-end pt-2 border-t border-white/8">
               <button onClick={() => setEditUser(null)} className="btn-secondary">Cancel</button>
+              <button onClick={updateRole} disabled={loading || newRole === editUser.role} className="btn-primary">
+                Update Role
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </>
+  )
+}
          

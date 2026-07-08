@@ -119,4 +119,27 @@ function LoginForm() {
             )}
 
             {/* Submit */}
-            <button type="submit" disabled={loading} cla
+            <button type="submit" disabled={loading} className="btn-primary w-full py-3 mt-2">
+              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+              {loading ? 'Signing in…' : 'Sign In'}
+            </button>
+          </form>
+
+        </div>
+
+        {/* Footer */}
+        <p className="text-center text-[11px] text-slate-600 mt-6">
+          © {new Date().getFullYear()} FleetFlow Premium · Internal System
+        </p>
+      </div>
+    </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
+  )
+}

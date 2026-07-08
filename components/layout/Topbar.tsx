@@ -1,10 +1,11 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { Bell, X, Check } from 'lucide-react'
+import { useState } from 'react'
+import { Bell, X, Check, Menu } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { cn, timeAgo } from '@/lib/utils'
-import { createClient } from '@/lib/supabase/client'
+import { useMobileSidebar } from './MobileSidebarContext'
+import { useNotifications } from './NotificationsContext'
 import type { Notification, Profile } from '@/types'
 
 interface TopbarProps {
@@ -15,56 +16,14 @@ interface TopbarProps {
 
 export function Topbar({ profile, title, subtitle }: TopbarProps) {
   const router = useRouter()
-  const [notifications, setNotifications] = useState<Notification[]>([])
+  const { toggle } = useMobileSidebar()
+  const { notifications, unreadCount, markAllRead, markRead } = useNotifications()
   const [showNotifs, setShowNotifs] = useState(false)
-  const [unreadCount, setUnreadCount] = useState(0)
-
-  useEffect(() => {
-    loadNotifications()
-    // Real-time subscription
-    const supabase = createClient()
-    const channel = supabase
-      .channel('notifications')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${profile.id}` },
-        () => loadNotifications()
-      )
-      .subscribe()
-    return () => { supabase.removeChannel(channel) }
-  }, [profile.id])
-
-  async function loadNotifications() {
-    const supabase = createClient()
-    const { data } = await supabase
-      .from('notifications')
-      .select('*')
-      .eq('user_id', profile.id)
-      .order('created_at', { ascending: false })
-      .limit(20)
-
-    if (data) {
-      setNotifications(data)
-      setUnreadCount(data.filter((n) => !n.is_read).length)
-    }
-  }
-
-  async function markAllRead() {
-    const supabase = createClient()
-    await supabase
-      .from('notifications')
-      .update({ is_read: true })
-      .eq('user_id', profile.id)
-      .eq('is_read', false)
-    loadNotifications()
-  }
 
   async function handleNotificationClick(n: Notification) {
     // Mark as read
     if (!n.is_read) {
-      const supabase = createClient()
-      await supabase.from('notifications').update({ is_read: true }).eq('id', n.id)
-      loadNotifications()
+      await markRead(n.id)
     }
     // Navigate to related booking if applicable
     if (n.booking_id) {
@@ -83,15 +42,24 @@ export function Topbar({ profile, title, subtitle }: TopbarProps) {
   }
 
   return (
-    <header className="sticky top-0 z-30 flex items-center justify-between px-6 py-4 border-b border-white/8 glass">
+    <header className="sticky top-0 z-30 flex items-center justify-between px-4 sm:px-6 py-4 border-b border-white/8 glass gap-3">
       {/* Page title */}
-      <div>
-        <h1 className="text-lg font-display font-bold text-white">{title}</h1>
-        {subtitle && <p className="text-xs text-slate-400 mt-0.5">{subtitle}</p>}
+      <div className="flex items-center gap-3 min-w-0">
+        <button
+          onClick={toggle}
+          className="md:hidden shrink-0 p-2 -ml-1 rounded-xl glass hover:bg-white/10 text-slate-300 hover:text-white transition-all"
+          aria-label="Open menu"
+        >
+          <Menu className="w-5 h-5" />
+        </button>
+        <div className="min-w-0">
+          <h1 className="text-lg font-display font-bold text-white truncate">{title}</h1>
+          {subtitle && <p className="text-xs text-slate-400 mt-0.5 truncate">{subtitle}</p>}
+        </div>
       </div>
 
       {/* Actions */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 shrink-0">
         {/* Notification bell */}
         <div className="relative">
           <button
@@ -108,8 +76,13 @@ export function Topbar({ profile, title, subtitle }: TopbarProps) {
 
           {showNotifs && (
             <>
-              <div className="fixed inset-0 z-10" onClick={() => setShowNotifs(false)} />
-              <div className="absolute right-0 top-full mt-2 w-80 glass rounded-2xl border border-white/10 shadow-2xl z-20 animate-slide-down overflow-hidden">
+              <div className="fixed inset-0 z-40" onClick={() => setShowNotifs(false)} />
+              {/* Solid background (not the translucent `glass` utility) — on
+                  mobile this sits directly over dense page content (tables,
+                  buttons), and the blur/8%-opacity glass effect wasn't
+                  enough contrast, so text behind it bled through and made
+                  the panel unreadable. */}
+              <div className="absolute right-0 top-full mt-2 w-80 max-w-[calc(100vw-2rem)] bg-[#141a2e] rounded-2xl border border-white/10 shadow-2xl z-50 animate-slide-down overflow-hidden">
                 <div className="flex items-center justify-between px-4 py-3 border-b border-white/8">
                   <span className="text-sm font-semibold text-white">Notifications</span>
                   <div className="flex items-center gap-2">

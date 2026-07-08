@@ -1,10 +1,11 @@
-import { createClient } from '@/lib/supabase/server'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import type { Metadata } from 'next'
 import type { Booking, BookingStatus } from '@/types'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import ModificationRequestModal from '@/components/bookings/ModificationRequestModal'
+import { DraftResumeForm } from '@/components/bookings/DraftResumeForm'
+import { TripFeedbackForm } from '@/components/bookings/TripFeedbackForm'
 
 function createAdminClient() {
   return createSupabaseClient(
@@ -164,9 +165,15 @@ export default async function BookingStatusPage({
 }: {
   params: { reference: string }
 }) {
-  const supabase = createClient()
+  // Service-role client — this is a public, unauthenticated page (a guest
+  // with just their reference_number in the URL), so it can't rely on an
+  // RLS policy scoped to a logged-in user. The `.eq('reference_number', ...)`
+  // filter below is what actually limits this to one row; there's no longer
+  // a broad anon-readable bookings policy in the DB to lean on (see
+  // supabase/patch_lockdown_rls.sql).
+  const admin = createAdminClient()
 
-  const { data: booking, error } = await supabase
+  const { data: booking, error } = await admin
     .from('bookings')
     .select('*, suppliers(company_name, contact_person, phone)')
     .eq('reference_number', params.reference.toUpperCase())
@@ -174,8 +181,10 @@ export default async function BookingStatusPage({
 
   if (error || !booking) notFound()
 
-  // Use admin client to bypass RLS for drivers + approvals (anon key can't read these tables)
-  const admin = createAdminClient()
+  // Drafts aren't real submissions yet — show the resume/edit form instead of a status timeline.
+  if (booking.is_draft) {
+    return <DraftResumeForm booking={booking as Booking} />
+  }
 
   // Auto-complete: if booking is approved and pickup time has already passed, mark it completed
   if (booking.status === 'approved' && booking.pickup_datetime && new Date(booking.pickup_datetime) < new Date()) {
@@ -207,6 +216,16 @@ export default async function BookingStatusPage({
     .limit(1)
 
   const approvalNotes = approvalRecords?.[0]?.comments ?? null
+
+  // Existing rating (if any) — lets a guest revisit and edit their feedback
+  const { data: feedbackRow } =
+    booking.status === 'completed'
+      ? await admin
+          .from('feedback')
+          .select('rating, comment')
+          .eq('booking_id', booking.id)
+          .maybeSingle()
+      : { data: null }
 
   const cfg = getStatusConfig(booking as Booking)
   const timeline = buildTimeline(booking as Booking)
@@ -425,6 +444,15 @@ export default async function BookingStatusPage({
             ))}
           </ol>
         </div>
+
+        {/* Rate Your Trip — completed bookings only, optional */}
+        {booking.status === 'completed' && (
+          <TripFeedbackForm
+            referenceNumber={booking.reference_number}
+            existingRating={feedbackRow?.rating ?? null}
+            existingComment={feedbackRow?.comment ?? null}
+          />
+        )}
 
         {/* Modification Request */}
         <ModificationRequestModal

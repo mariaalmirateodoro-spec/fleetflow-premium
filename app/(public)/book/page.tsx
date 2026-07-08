@@ -34,7 +34,6 @@ function BookingForm() {
   const [form, setForm] = useState({
     vehicle_type: (searchParams.get('type') ?? 'sedan') as VehicleType,
     guest_name: '',
-    guest_nationality: '',
     guest_count: '1',
     guest_phone: '',
     guest_email: '',
@@ -55,13 +54,186 @@ function BookingForm() {
     if (t && vehicleLabels[t]) setForm((f) => ({ ...f, vehicle_type: t }))
   }, [searchParams])
 
-  const set = (key: string, value: string | boolean) =>
+  // Email verification — required before a real submit, not required for drafts.
+  const [emailVerified, setEmailVerified] = useState(false)
+  const [codeSent, setCodeSent] = useState(false)
+  const [verifyCode, setVerifyCode] = useState('')
+  const [sendingCode, setSendingCode] = useState(false)
+  const [verifying, setVerifying] = useState(false)
+  const [verifyError, setVerifyError] = useState('')
+  const [verifyInfo, setVerifyInfo] = useState('')
+
+  // Returning-guest recognition — only checked after email verification
+  // succeeds, so we never hand back a past guest's details to someone who
+  // merely typed their email address.
+  const [returningGuest, setReturningGuest] = useState<{
+    guest_name: string
+    guest_nationality: string
+    guest_phone: string
+    vehicle_type: VehicleType
+  } | null>(null)
+  const [returningDismissed, setReturningDismissed] = useState(false)
+
+  const set = (key: string, value: string | boolean) => {
+    // Changing the email after it's been verified invalidates that verification.
+    if (key === 'guest_email' && value !== form.guest_email) {
+      setEmailVerified(false)
+      setCodeSent(false)
+      setVerifyCode('')
+      setVerifyError('')
+      setVerifyInfo('')
+      setReturningGuest(null)
+      setReturningDismissed(false)
+    }
     setForm((f) => ({ ...f, [key]: value }))
+  }
+
+  const emailLooksValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.guest_email)
+
+  async function handleSendCode() {
+    setVerifyError('')
+    setVerifyInfo('')
+    setSendingCode(true)
+    try {
+      const res = await fetch('/api/public/verify-email/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: form.guest_email }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Could not send verification code.')
+      setCodeSent(true)
+      setVerifyInfo('Code sent! Check your inbox (and spam folder).')
+    } catch (err) {
+      setVerifyError(err instanceof Error ? err.message : 'Something went wrong.')
+    } finally {
+      setSendingCode(false)
+    }
+  }
+
+  async function handleVerifyCode() {
+    setVerifyError('')
+    setVerifying(true)
+    try {
+      const res = await fetch('/api/public/verify-email/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: form.guest_email, code: verifyCode }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Incorrect code.')
+      setEmailVerified(true)
+      setVerifyInfo('')
+      checkReturningGuest()
+    } catch (err) {
+      setVerifyError(err instanceof Error ? err.message : 'Something went wrong.')
+    } finally {
+      setVerifying(false)
+    }
+  }
+
+  // Only ever called right after a successful email verification — see the
+  // API route for why that ordering matters (it won't return anyone's data
+  // for an unverified email).
+  async function checkReturningGuest() {
+    try {
+      const res = await fetch('/api/public/returning-guest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: form.guest_email }),
+      })
+      const json = await res.json()
+      if (res.ok && json.returning) setReturningGuest(json.previous)
+    } catch {
+      // Non-critical — silently skip the "welcome back" convenience if this fails.
+    }
+  }
+
+  function applyReturningGuestDetails() {
+    if (!returningGuest) return
+    setForm((f) => ({
+      ...f,
+      guest_name: f.guest_name || returningGuest.guest_name || f.guest_name,
+      guest_phone: f.guest_phone || returningGuest.guest_phone || f.guest_phone,
+      vehicle_type: returningGuest.vehicle_type ?? f.vehicle_type,
+    }))
+    setReturningDismissed(true)
+  }
+
+  const [draftLoading, setDraftLoading] = useState(false)
+
+  function buildBody() {
+    const pickup_datetime = form.pickup_date && form.pickup_time
+      ? new Date(`${form.pickup_date}T${form.pickup_time}`).toISOString()
+      : null
+
+    let dropoff_datetime: string | null = null
+    if (form.dropoff_date) {
+      dropoff_datetime = new Date(`${form.dropoff_date}T12:00`).toISOString()
+    } else if (form.rental_duration && pickup_datetime) {
+      const durationMs = parseInt(form.rental_duration) *
+        (form.rental_duration_unit === 'hours' ? 3_600_000 : 86_400_000)
+      dropoff_datetime = new Date(new Date(pickup_datetime).getTime() + durationMs).toISOString()
+    }
+
+    const durationNote = form.rental_duration
+      ? `Rental duration: ${form.rental_duration} ${form.rental_duration_unit}`
+      : ''
+    const specialRequests = [durationNote, form.special_requests].filter(Boolean).join('\n') || null
+
+    return {
+      guest_name: form.guest_name,
+      guest_count: form.guest_count ? parseInt(form.guest_count) : undefined,
+      guest_phone: form.guest_phone,
+      guest_email: form.guest_email,
+      guest_line_id: form.guest_line_id || null,
+      pickup_location: form.pickup_location,
+      dropoff_location: form.dropoff_location,
+      pickup_datetime,
+      dropoff_datetime,
+      vehicle_type: form.vehicle_type,
+      driver_required: form.driver_required,
+      special_requests: specialRequests,
+    }
+  }
+
+  // "Save & finish later" — a button (type="button"), so it never triggers the
+  // form's native required-field validation. The API accepts a partial payload
+  // when is_draft is true.
+  const handleSaveDraft = async () => {
+    setError('')
+
+    if (!emailLooksValid) {
+      setError('Please enter a valid email address before saving a draft — we\'ll send you a link back to it.')
+      return
+    }
+
+    setDraftLoading(true)
+    try {
+      const res = await fetch('/api/public/bookings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...buildBody(), is_draft: true }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Something went wrong')
+      router.push(`/book/confirmation?ref=${json.reference_number}&draft=1`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.')
+      setDraftLoading(false)
+    }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setLoading(true)
     setError('')
+
+    if (!emailVerified) {
+      setError('Please verify your email address before submitting your booking.')
+      return
+    }
+
+    setLoading(true)
 
     try {
       const pickup_datetime = form.pickup_date && form.pickup_time
@@ -89,7 +261,6 @@ function BookingForm() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           guest_name: form.guest_name,
-          guest_nationality: form.guest_nationality,
           guest_count: parseInt(form.guest_count),
           guest_phone: form.guest_phone,
           guest_email: form.guest_email,
@@ -185,7 +356,7 @@ function BookingForm() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className={labelCls}>Pickup date *</label>
               <input
@@ -279,51 +450,9 @@ function BookingForm() {
           </div>
         </div>
 
-        {/* Passenger info */}
-        <div className="p-5 rounded-2xl border border-white/8 bg-white/3 space-y-4">
-          <h2 className="font-semibold text-white">Passenger information</h2>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className={labelCls}>Full name *</label>
-              <input
-                required
-                className={inputCls}
-                placeholder="e.g. John Smith"
-                value={form.guest_name}
-                onChange={(e) => set('guest_name', e.target.value)}
-              />
-            </div>
-            <div>
-              <label className={labelCls}>Nationality *</label>
-              <input
-                required
-                className={inputCls}
-                placeholder="e.g. American"
-                value={form.guest_nationality}
-                onChange={(e) => set('guest_nationality', e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className={labelCls}>Number of passengers *</label>
-            <select
-              required
-              className={inputCls}
-              value={form.guest_count}
-              onChange={(e) => set('guest_count', e.target.value)}
-            >
-              {Array.from({ length: 20 }, (_, i) => i + 1).map((n) => (
-                <option key={n} value={n} className="bg-[#1a2035]">
-                  {n} {n === 1 ? 'passenger' : 'passengers'}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {/* Contact info */}
+        {/* Contact info — moved ahead of Passenger info so email verification
+            (and the "welcome back, reuse your details?" prompt) happens
+            before the guest has to manually retype their name/nationality. */}
         <div className="p-5 rounded-2xl border border-white/8 bg-white/3 space-y-4">
           <h2 className="font-semibold text-white">Contact information</h2>
           <p className="text-slate-500 text-xs -mt-1">So we can confirm your booking and send updates.</p>
@@ -342,14 +471,83 @@ function BookingForm() {
 
           <div>
             <label className={labelCls}>Email address *</label>
-            <input
-              required
-              type="email"
-              className={inputCls}
-              placeholder="john@example.com"
-              value={form.guest_email}
-              onChange={(e) => set('guest_email', e.target.value)}
-            />
+            <div className="flex gap-2">
+              <input
+                required
+                type="email"
+                className={inputCls + ' flex-1'}
+                placeholder="john@example.com"
+                value={form.guest_email}
+                onChange={(e) => set('guest_email', e.target.value)}
+                disabled={emailVerified}
+              />
+              {emailVerified ? (
+                <span className="shrink-0 inline-flex items-center gap-1.5 px-4 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-sm font-medium">
+                  ✓ Verified
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleSendCode}
+                  disabled={!emailLooksValid || sendingCode}
+                  className="shrink-0 px-4 rounded-xl border border-white/15 bg-white/5 text-slate-200 text-sm font-medium hover:bg-white/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {sendingCode ? 'Sending…' : codeSent ? 'Resend code' : 'Send code'}
+                </button>
+              )}
+            </div>
+
+            {!emailVerified && codeSent && (
+              <div className="flex gap-2 mt-2">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={6}
+                  className={inputCls + ' flex-1'}
+                  placeholder="Enter 6-digit code"
+                  value={verifyCode}
+                  onChange={(e) => setVerifyCode(e.target.value.replace(/\D/g, ''))}
+                />
+                <button
+                  type="button"
+                  onClick={handleVerifyCode}
+                  disabled={verifyCode.length !== 6 || verifying}
+                  className="shrink-0 px-4 rounded-xl bg-gradient-fleet text-white text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {verifying ? 'Verifying…' : 'Verify'}
+                </button>
+              </div>
+            )}
+
+            {verifyInfo && <p className="text-emerald-400 text-xs mt-1.5">{verifyInfo}</p>}
+            {verifyError && <p className="text-red-400 text-xs mt-1.5">{verifyError}</p>}
+
+            {returningGuest && !returningDismissed && (
+              <div className="mt-3 p-3.5 rounded-xl border border-fleet-500/25 bg-fleet-500/8 flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium text-white">👋 Welcome back!</p>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Want to reuse your details from last time ({returningGuest.guest_name})?
+                  </p>
+                </div>
+                <div className="flex gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={applyReturningGuestDetails}
+                    className="px-3 py-1.5 rounded-lg bg-fleet-600 text-white text-xs font-semibold hover:bg-fleet-500 transition-colors"
+                  >
+                    Yes, autofill
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setReturningDismissed(true)}
+                    className="px-3 py-1.5 rounded-lg border border-white/15 text-slate-400 text-xs hover:text-white transition-colors"
+                  >
+                    No thanks
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           <div>
@@ -365,6 +563,38 @@ function BookingForm() {
               onChange={(e) => set('guest_line_id', e.target.value)}
             />
             <p className="text-xs text-slate-500 mt-1.5">We'll send booking updates via LINE if provided.</p>
+          </div>
+        </div>
+
+        {/* Passenger info */}
+        <div className="p-5 rounded-2xl border border-white/8 bg-white/3 space-y-4">
+          <h2 className="font-semibold text-white">Passenger information</h2>
+
+          <div>
+            <label className={labelCls}>Full name *</label>
+            <input
+              required
+              className={inputCls}
+              placeholder="e.g. John Smith"
+              value={form.guest_name}
+              onChange={(e) => set('guest_name', e.target.value)}
+            />
+          </div>
+
+          <div>
+            <label className={labelCls}>Number of passengers *</label>
+            <select
+              required
+              className={inputCls}
+              value={form.guest_count}
+              onChange={(e) => set('guest_count', e.target.value)}
+            >
+              {Array.from({ length: 20 }, (_, i) => i + 1).map((n) => (
+                <option key={n} value={n} className="bg-[#1a2035]">
+                  {n} {n === 1 ? 'passenger' : 'passengers'}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
 
@@ -388,28 +618,45 @@ function BookingForm() {
         )}
 
         {/* Submit */}
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full py-3.5 rounded-xl bg-gradient-fleet text-white font-semibold text-base shadow-fleet hover:shadow-fleet-lg transition-all hover:scale-[1.01] disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center justify-center gap-2"
-        >
-          {loading ? (
-            <>
-              <svg className="w-5 h-5 animate-spin" viewBox="0 0 24 24" fill="none">
+        <div className="flex flex-col sm:flex-row gap-3">
+          <button
+            type="button"
+            onClick={handleSaveDraft}
+            disabled={loading || draftLoading}
+            className="sm:w-auto w-full py-3.5 px-6 rounded-xl border border-white/15 bg-white/5 text-slate-200 font-semibold text-sm hover:bg-white/10 transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          >
+            {draftLoading ? (
+              <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
               </svg>
-              Submitting request…
-            </>
-          ) : (
-            <>
-              Submit booking request
-              <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
-                <path fillRule="evenodd" d="M3 10a.75.75 0 01.75-.75h10.638L10.23 5.29a.75.75 0 111.04-1.08l5.5 5.25a.75.75 0 010 1.08l-5.5 5.25a.75.75 0 11-1.04-1.08l4.158-3.96H3.75A.75.75 0 013 10z" clipRule="evenodd" />
-              </svg>
-            </>
-          )}
-        </button>
+            ) : '📝'}
+            Save & finish later
+          </button>
+
+          <button
+            type="submit"
+            disabled={loading || draftLoading}
+            className="flex-1 py-3.5 rounded-xl bg-gradient-fleet text-white font-semibold text-base shadow-fleet hover:shadow-fleet-lg transition-all hover:scale-[1.01] disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center justify-center gap-2"
+          >
+            {loading ? (
+              <>
+                <svg className="w-5 h-5 animate-spin" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                Submitting request…
+              </>
+            ) : (
+              <>
+                Submit booking request
+                <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+                  <path fillRule="evenodd" d="M3 10a.75.75 0 01.75-.75h10.638L10.23 5.29a.75.75 0 111.04-1.08l5.5 5.25a.75.75 0 010 1.08l-5.5 5.25a.75.75 0 11-1.04-1.08l4.158-3.96H3.75A.75.75 0 013 10z" clipRule="evenodd" />
+                </svg>
+              </>
+            )}
+          </button>
+        </div>
 
         <p className="text-center text-slate-500 text-xs">
           By submitting, you agree to our{' '}

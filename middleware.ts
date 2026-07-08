@@ -45,7 +45,8 @@ export async function middleware(request: NextRequest) {
   const publicRoutes = ['/login', '/auth/callback', '/fleet', '/book']
   const isPublicRoute =
     publicRoutes.some((route) => pathname.startsWith(route)) ||
-    pathname.startsWith('/api/public')
+    pathname.startsWith('/api/public') ||
+    pathname.startsWith('/api/cron') // cron routes authenticate via CRON_SECRET bearer token, not a user session
 
   if (!user && !isPublicRoute) {
     const url = request.nextUrl.clone()

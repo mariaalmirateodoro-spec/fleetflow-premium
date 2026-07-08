@@ -6,6 +6,7 @@ import { cn, vehicleLabels } from '@/lib/utils'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { useToast } from '@/components/ui/Toast'
 import { createClient } from '@/lib/supabase/client'
+import { getActiveAssignment, type DriverAssignmentRow } from '@/lib/availability'
 import type { Driver, Supplier, VehicleType, Profile } from '@/types'
 
 const VEHICLE_TYPES: VehicleType[] = ['sedan', 'suv', 'van', 'minibus', 'luxury', 'pickup']
@@ -292,6 +293,7 @@ export function DriversClient({ initialDrivers, suppliers, profile }: Props) {
   const [search, setSearch] = useState('')
   const [availableOnly, setAvailableOnly] = useState(false)
   const [upcomingCounts, setUpcomingCounts] = useState<Record<string, number>>({})
+  const [activeAssignments, setActiveAssignments] = useState<DriverAssignmentRow[]>([])
 
   const canManage = ['admin', 'staff', 'manager'].includes(profile.role)
 
@@ -314,6 +316,21 @@ export function DriversClient({ initialDrivers, suppliers, profile }: Props) {
         })
         setUpcomingCounts(counts)
       })
+  }, [drivers])
+
+  // Derived "on a trip right now" status — computed live from currently-approved
+  // bookings, not stored. Doesn't touch the manual is_available toggle below;
+  // this just tells staff which "available" drivers are momentarily out on a trip.
+  useEffect(() => {
+    const ids = drivers.map((d) => d.id)
+    if (ids.length === 0) { setActiveAssignments([]); return }
+    const supabase = createClient()
+    supabase
+      .from('bookings')
+      .select('driver_id, status, pickup_datetime, dropoff_datetime')
+      .in('driver_id', ids)
+      .eq('status', 'approved')
+      .then(({ data }) => setActiveAssignments((data ?? []) as DriverAssignmentRow[]))
   }, [drivers])
 
   const filtered = useMemo(() => {
@@ -438,6 +455,7 @@ export function DriversClient({ initialDrivers, suppliers, profile }: Props) {
         />
       ) : (
         <div className="card p-0 overflow-hidden">
+          <p className="md:hidden text-[11px] text-slate-500 text-center pt-3 pb-1">← Swipe table to see more columns →</p>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -526,15 +544,30 @@ export function DriversClient({ initialDrivers, suppliers, profile }: Props) {
 
                       {/* Status */}
                       <td className="px-4 py-3">
-                        <span className={cn(
-                          'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold',
-                          d.is_available
-                            ? 'bg-emerald-500/15 text-emerald-400'
-                            : 'bg-red-500/15 text-red-400'
-                        )}>
-                          {d.is_available ? <UserCheck className="w-3 h-3" /> : <UserX className="w-3 h-3" />}
-                          {d.is_available ? 'Available' : 'Unavailable'}
-                        </span>
+                        {(() => {
+                          const active = d.is_available ? getActiveAssignment(d.id, activeAssignments) : null
+                          if (active) {
+                            return (
+                              <span
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/15 text-amber-400"
+                                title={`On a trip until ${new Date(active.dropoff_datetime ?? active.pickup_datetime).toLocaleString()}`}
+                              >
+                                🚗 On Trip
+                              </span>
+                            )
+                          }
+                          return (
+                            <span className={cn(
+                              'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold',
+                              d.is_available
+                                ? 'bg-emerald-500/15 text-emerald-400'
+                                : 'bg-red-500/15 text-red-400'
+                            )}>
+                              {d.is_available ? <UserCheck className="w-3 h-3" /> : <UserX className="w-3 h-3" />}
+                              {d.is_available ? 'Available' : 'Unavailable'}
+                            </span>
+                          )
+                        })()}
                       </td>
 
                       {/* Actions */}

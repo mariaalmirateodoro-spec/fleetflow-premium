@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react'
 import { Loader2 } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
-import { createClient } from '@/lib/supabase/client'
 import { vehicleLabels } from '@/lib/utils'
 import type { Supplier, VehicleType } from '@/types'
 
@@ -61,7 +60,6 @@ export function SupplierModal({ open, onClose, supplier, onSuccess }: Props) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
-    const supabase = createClient()
     const payload = {
       company_name: form.company_name,
       contact_person: form.contact_person,
@@ -75,14 +73,11 @@ export function SupplierModal({ open, onClose, supplier, onSuccess }: Props) {
       is_available: form.is_available,
     }
 
-    let error
-    if (isEdit) {
-      ;({ error } = await supabase.from('suppliers').update(payload).eq('id', supplier!.id))
-    } else {
-      ;({ error } = await supabase.from('suppliers').insert(payload))
-    }
+    const res = isEdit
+      ? await fetch('/api/suppliers', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: supplier!.id, ...payload }) })
+      : await fetch('/api/suppliers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
     setLoading(false)
-    if (!error) onSuccess()
+    if (res.ok) onSuccess()
   }
 
   return (

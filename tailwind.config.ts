@@ -84,8 +84,8 @@ const config: Config = {
         },
       },
       fontFamily: {
-        sans: ['Inter var', 'Inter', 'system-ui', 'sans-serif'],
-        display: ['Plus Jakarta Sans', 'Inter', 'system-ui', 'sans-serif'],
+        sans: ['var(--font-inter)', 'system-ui', 'sans-serif'],
+        display: ['var(--font-jakarta)', 'var(--font-inter)', 'system-ui', 'sans-serif'],
       },
     },
   },

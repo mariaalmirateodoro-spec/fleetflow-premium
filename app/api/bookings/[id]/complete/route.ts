@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { logAudit, adminClient } from '@/lib/audit'
 
 export async function POST(
   request: NextRequest,
@@ -14,7 +15,7 @@ export async function POST(
   // Role check
   const { data: profile } = await supabase
     .from('profiles')
-    .select('id, role')
+    .select('id, role, full_name')
     .eq('id', user.id)
     .single()
 
@@ -52,6 +53,16 @@ export async function POST(
   if (updateErr) {
     return NextResponse.json({ error: updateErr.message }, { status: 400 })
   }
+
+  await logAudit(adminClient(), {
+    bookingId: params.id,
+    actorId: user.id,
+    actorName: profile.full_name || user.email || 'Unknown',
+    action: 'booking_completed',
+    field: 'status',
+    oldValue: 'approved',
+    newValue: 'completed',
+  })
 
   // In-app notification for booking creator
   if (booking.created_by) {

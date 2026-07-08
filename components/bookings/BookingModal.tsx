@@ -1,15 +1,28 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { Loader2, Sparkles, Phone, Mail, MessageCircle } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { Loader2, Sparkles, Phone, Mail, MessageCircle, Search, UserCheck } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { LocationInput } from '@/components/ui/LocationInput'
-import { createClient } from '@/lib/supabase/client'
 import { vehicleLabels } from '@/lib/utils'
 import type { Booking, CreateBookingInput, Profile, Supplier, VehicleType } from '@/types'
 
 const VEHICLE_TYPES: VehicleType[] = ['sedan', 'suv', 'van', 'minibus', 'luxury', 'pickup']
-const NATIONALITIES = ['Japanese', 'Chinese', 'Korean', 'American', 'British', 'German', 'French', 'Australian', 'Canadian', 'Indian', 'UAE', 'Saudi', 'Mexican', 'Egyptian', 'Other']
+
+// Converts a stored UTC timestamp into the local wall-clock value a
+// <input type="datetime-local"> expects. Using .slice(0, 16) on the raw UTC
+// string instead (the old code) grabs the UTC digits as if they were already
+// local — so on save, `new Date(value).toISOString()` (which treats the typed
+// value as local time) shifts the real pickup/dropoff time by the browser's
+// UTC offset EVERY time the form is saved, even if that field was never
+// touched. This local-getter-based conversion round-trips correctly instead.
+function toLocalInputValue(iso?: string | null): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return ''
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
 
 interface Props {
   open: boolean
@@ -25,9 +38,26 @@ export function BookingModal({ open, onClose, booking, suppliers, profile, onSuc
   const [loading, setLoading] = useState(false)
   const [aiLoading, setAiLoading] = useState(false)
   const [aiSuggestion, setAiSuggestion] = useState('')
+
+  // Returning-guest search — lets staff pull in a past guest's contact info
+  // instead of retyping it, mirroring the autofill guests already get on the
+  // public /book page. Only shown when creating a brand-new booking.
+  const [guestQuery, setGuestQuery] = useState('')
+  const [guestResults, setGuestResults] = useState<{
+    guest_name: string
+    guest_nationality: string | null
+    guest_phone: string | null
+    guest_email: string | null
+    guest_line_id: string | null
+    vehicle_type: VehicleType
+  }[]>([])
+  const [guestSearchOpen, setGuestSearchOpen] = useState(false)
+  const [guestSearching, setGuestSearching] = useState(false)
+  const [appliedGuest, setAppliedGuest] = useState<string | null>(null)
+  const guestSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [form, setForm] = useState<CreateBookingInput & { special_requests?: string }>({
     guest_name: '',
-    guest_nationality: 'Japanese',
+    guest_nationality: null as string | null,
     guest_count: 1,
     guest_phone: '',
     guest_email: '',
@@ -52,8 +82,8 @@ export function BookingModal({ open, onClose, booking, suppliers, profile, onSuc
         guest_phone: booking.guest_phone ?? '',
         guest_email: booking.guest_email ?? '',
         guest_line_id: booking.guest_line_id ?? '',
-        pickup_datetime: booking.pickup_datetime?.slice(0, 16) ?? '',
-        dropoff_datetime: booking.dropoff_datetime?.slice(0, 16) ?? '',
+        pickup_datetime: toLocalInputValue(booking.pickup_datetime),
+        dropoff_datetime: toLocalInputValue(booking.dropoff_datetime),
         pickup_location: booking.pickup_location,
         dropoff_location: booking.dropoff_location,
         vehicle_type: booking.vehicle_type,
@@ -67,6 +97,48 @@ export function BookingModal({ open, onClose, booking, suppliers, profile, onSuc
 
   function update<K extends keyof typeof form>(key: K, value: typeof form[K]) {
     setForm((prev) => ({ ...prev, [key]: value }))
+  }
+
+  useEffect(() => {
+    if (isEdit) return
+    if (guestSearchTimer.current) clearTimeout(guestSearchTimer.current)
+    if (guestQuery.trim().length < 2) {
+      setGuestResults([])
+      setGuestSearchOpen(false)
+      return
+    }
+    guestSearchTimer.current = setTimeout(async () => {
+      setGuestSearching(true)
+      try {
+        const res = await fetch(`/api/bookings/guest-lookup?q=${encodeURIComponent(guestQuery.trim())}`)
+        const json = await res.json()
+        setGuestResults(json.data ?? [])
+        setGuestSearchOpen(true)
+      } catch {
+        setGuestResults([])
+      } finally {
+        setGuestSearching(false)
+      }
+    }, 350)
+    return () => {
+      if (guestSearchTimer.current) clearTimeout(guestSearchTimer.current)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [guestQuery, isEdit])
+
+  function applyGuest(guest: typeof guestResults[number]) {
+    setForm((prev) => ({
+      ...prev,
+      guest_name: guest.guest_name || prev.guest_name,
+      guest_nationality: guest.guest_nationality || prev.guest_nationality,
+      guest_phone: guest.guest_phone || prev.guest_phone,
+      guest_email: guest.guest_email || prev.guest_email,
+      guest_line_id: guest.guest_line_id || prev.guest_line_id,
+      vehicle_type: guest.vehicle_type || prev.vehicle_type,
+    }))
+    setAppliedGuest(guest.guest_name)
+    setGuestSearchOpen(false)
+    setGuestQuery('')
   }
 
   async function getAISuggestion() {
@@ -88,64 +160,130 @@ export function BookingModal({ open, onClose, booking, suppliers, profile, onSuc
     setAiLoading(false)
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    setLoading(true)
-
-    const supabase = createClient()
-    const payload = {
-      guest_name: form.guest_name,
-      guest_nationality: form.guest_nationality,
+  function buildPayload(isDraft: boolean) {
+    return {
+      guest_name: form.guest_name || null,
+      guest_nationality: form.guest_nationality || null,
       guest_count: form.guest_count,
       guest_phone: form.guest_phone || null,
       guest_email: form.guest_email || null,
       guest_line_id: form.guest_line_id || null,
-      pickup_datetime: new Date(form.pickup_datetime).toISOString(),
+      pickup_datetime: form.pickup_datetime ? new Date(form.pickup_datetime).toISOString() : null,
       dropoff_datetime: form.dropoff_datetime ? new Date(form.dropoff_datetime).toISOString() : null,
-      pickup_location: form.pickup_location,
-      dropoff_location: form.dropoff_location,
+      pickup_location: form.pickup_location || null,
+      dropoff_location: form.dropoff_location || null,
       vehicle_type: form.vehicle_type,
       driver_required: form.driver_required,
       budget_usd: form.budget_usd ?? null,
       notes: form.notes || null,
       special_requests: form.special_requests || null,
+      is_draft: isDraft,
     }
+  }
 
-    let error
-    if (isEdit) {
-      ;({ error } = await supabase.from('bookings').update(payload).eq('id', booking!.id))
-    } else {
-      ;({ error } = await supabase.from('bookings').insert({ ...payload, created_by: profile.id }))
-    }
+  // Create/edit go through the API routes (instead of writing to Supabase
+  // directly from the browser) so every staff booking action — not just
+  // final-cost/driver changes — ends up in the Activity Log.
+  async function saveBooking(isDraft: boolean) {
+    setLoading(true)
+    const payload = buildPayload(isDraft)
+
+    const res = isEdit
+      ? await fetch(`/api/bookings/${booking!.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+      : await fetch('/api/bookings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
 
     setLoading(false)
-    if (!error) {
+    if (res.ok) {
       onSuccess()
     }
   }
 
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    await saveBooking(false)
+  }
+
+  // "Save as Draft" bypasses the form's native required-field validation
+  // (button is type="button", so it never triggers HTML5 constraint checks)
+  // and is allowed to persist a booking that's still missing information.
+  async function handleSaveDraft() {
+    await saveBooking(true)
+  }
+
   return (
-    <Modal open={open} onClose={onClose} title={isEdit ? 'Edit Booking' : 'New Booking'} subtitle="Fill in the guest transport details" size="2xl">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={isEdit ? (booking?.is_draft ? 'Edit Draft Booking' : 'Edit Booking') : 'New Booking'}
+      subtitle={booking?.is_draft ? 'This booking is still a draft — fill in the rest, or keep saving as draft.' : 'Fill in the guest transport details'}
+      size="2xl"
+    >
       <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Returning-guest search */}
+        {!isEdit && (
+          <div className="relative">
+            <label className="flex items-center gap-1.5 text-xs text-slate-400 mb-1.5 font-medium">
+              <Search className="w-3 h-3" /> Search past guest
+            </label>
+            <input
+              value={guestQuery}
+              onChange={(e) => { setGuestQuery(e.target.value); setAppliedGuest(null) }}
+              onFocus={() => { if (guestResults.length) setGuestSearchOpen(true) }}
+              placeholder="Type a name, phone, or email to reuse their details…"
+              className="input-dark"
+            />
+            {guestSearching && (
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-500 absolute right-3 top-[34px]" />
+            )}
+            {guestSearchOpen && guestResults.length > 0 && (
+              <div className="absolute z-20 mt-1 w-full rounded-xl border border-white/10 bg-[#141a2e] shadow-2xl max-h-64 overflow-y-auto">
+                {guestResults.map((g, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => applyGuest(g)}
+                    className="w-full text-left px-3 py-2 hover:bg-white/5 transition-colors border-b border-white/5 last:border-0"
+                  >
+                    <p className="text-sm text-white font-medium">{g.guest_name}</p>
+                    <p className="text-[11px] text-slate-500">
+                      {[g.guest_phone, g.guest_email, g.guest_nationality].filter(Boolean).join(' · ')}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            )}
+            {guestSearchOpen && !guestSearching && guestResults.length === 0 && guestQuery.trim().length >= 2 && (
+              <div className="absolute z-20 mt-1 w-full rounded-xl border border-white/10 bg-[#141a2e] shadow-2xl px-3 py-2.5 text-xs text-slate-500">
+                No past guest matches "{guestQuery.trim()}"
+              </div>
+            )}
+            {appliedGuest && (
+              <p className="flex items-center gap-1.5 text-[11px] text-emerald-400 mt-1.5">
+                <UserCheck className="w-3 h-3" /> Filled in details from {appliedGuest}'s last booking
+              </p>
+            )}
+          </div>
+        )}
+
         {/* Guest info */}
-        <div className="grid grid-cols-2 gap-3">
-          <div className="col-span-2 sm:col-span-1">
-            <label className="block text-xs text-slate-400 mb-1.5 font-medium">Guest Name *</label>
-            <input value={form.guest_name} onChange={(e) => update('guest_name', e.target.value)}
-              placeholder="Full name" required className="input-dark" />
-          </div>
-          <div>
-            <label className="block text-xs text-slate-400 mb-1.5 font-medium">Nationality *</label>
-            <select value={form.guest_nationality} onChange={(e) => update('guest_nationality', e.target.value)} className="input-dark">
-              {NATIONALITIES.map((n) => <option key={n}>{n}</option>)}
-            </select>
-          </div>
+        <div>
+          <label className="block text-xs text-slate-400 mb-1.5 font-medium">Guest Name *</label>
+          <input value={form.guest_name} onChange={(e) => update('guest_name', e.target.value)}
+            placeholder="Full name" required className="input-dark" />
         </div>
 
         {/* Contact info */}
         <div className="rounded-xl border border-white/8 bg-white/[0.02] p-3 space-y-3">
           <p className="text-[11px] font-medium text-slate-400 uppercase tracking-wide">Guest Contact</p>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="flex items-center gap-1.5 text-xs text-slate-400 mb-1.5 font-medium">
                 <Phone className="w-3 h-3" /> Phone
@@ -186,7 +324,7 @@ export function BookingModal({ open, onClose, booking, suppliers, profile, onSuc
         </div>
 
         {/* Dates */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="block text-xs text-slate-400 mb-1.5 font-medium">Pickup Date & Time *</label>
             <input type="datetime-local" value={form.pickup_datetime} onChange={(e) => update('pickup_datetime', e.target.value)}
@@ -200,7 +338,7 @@ export function BookingModal({ open, onClose, booking, suppliers, profile, onSuc
         </div>
 
         {/* Locations */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="block text-xs text-slate-400 mb-1.5 font-medium">Pickup Location *</label>
             <LocationInput
@@ -224,7 +362,7 @@ export function BookingModal({ open, onClose, booking, suppliers, profile, onSuc
         </div>
 
         {/* Vehicle & AI */}
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           <div>
             <label className="block text-xs text-slate-400 mb-1.5 font-medium">Guest Count *</label>
             <input type="number" min={1} max={50} value={form.guest_count} onChange={(e) => update('guest_count', +e.target.value)}
@@ -285,6 +423,10 @@ export function BookingModal({ open, onClose, booking, suppliers, profile, onSuc
         {/* Actions */}
         <div className="flex justify-end gap-2 pt-2 border-t border-white/8">
           <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+          <button type="button" onClick={handleSaveDraft} disabled={loading} className="btn-secondary">
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+            Save as Draft
+          </button>
           <button type="submit" disabled={loading} className="btn-primary">
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
             {loading ? 'Saving…' : isEdit ? 'Update Booking' : 'Create Booking'}

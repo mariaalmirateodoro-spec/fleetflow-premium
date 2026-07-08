@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
+import { cache } from 'react'
 import type { Profile } from '@/types'
 
 type CookieOpts = {
@@ -40,18 +41,30 @@ export function createClient() {
   )
 }
 
-export async function getUser() {
+// Wrapped in React's cache() so multiple calls during the same request/
+// navigation (e.g. the dashboard layout calling getProfile(), then the page
+// underneath it calling getProfile() again) reuse the first result instead
+// of each re-hitting Supabase Auth + the profiles table from scratch. This
+// was previously uncached, so every single dashboard page navigation paid
+// for the full auth+profile round trip twice — a meaningful chunk of the
+// "switching pages feels slow" complaint.
+export const getUser = cache(async function getUser() {
   const supabase = createClient()
   const { data: { user }, error } = await supabase.auth.getUser()
   if (error || !user) return null
   return user
-}
+})
 
-export async function getProfile(): Promise<Profile | null> {
-  const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+export const getProfile = cache(async function getProfile(): Promise<Profile | null> {
+  const user = await getUser()
   if (!user) return null
 
+  const supabase = createClient()
   const { data } = await supabase
     .from('profiles')
-    .se
+    .select('*')
+    .eq('id', user.id)
+    .single()
+
+  return data
+})

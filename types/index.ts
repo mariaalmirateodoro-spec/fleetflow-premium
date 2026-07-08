@@ -58,7 +58,7 @@ export interface Booking {
   id: string
   reference_number: string
   guest_name: string
-  guest_nationality: string
+  guest_nationality: string | null
   guest_count: number
   guest_phone: string | null
   guest_email: string | null
@@ -86,6 +86,7 @@ export interface Booking {
   cancellation_reason: string | null
   created_at: string
   updated_at: string
+  is_draft: boolean
   // Modification request fields
   modification_status: string | null
   modification_pickup_datetime: string | null
@@ -97,6 +98,7 @@ export interface Booking {
   profiles?: Profile
   suppliers?: Supplier
   drivers?: Pick<Driver, 'id' | 'full_name' | 'phone' | 'license_number'>
+  feedback?: { rating: number; comment: string | null } | { rating: number; comment: string | null }[]
 }
 
 export interface Quote {
@@ -110,6 +112,7 @@ export interface Quote {
   valid_until: string | null
   notes: string | null
   is_selected: boolean
+  invoice_path: string | null
   created_by: string | null
   created_at: string
   // Relations
@@ -146,7 +149,7 @@ export interface Notification {
 
 export interface CreateBookingInput {
   guest_name: string
-  guest_nationality: string
+  guest_nationality?: string | null
   guest_count: number
   guest_phone?: string
   guest_email?: string

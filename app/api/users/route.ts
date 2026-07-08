@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { logAudit, adminClient } from '@/lib/audit'
 
 export async function GET() {
   const supabase = createClient()
@@ -49,6 +50,8 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: 'Cannot change your own role' }, { status: 400 })
   }
 
+  const { data: target } = await supabase.from('profiles').select('role, is_active, full_name').eq('id', userId).single()
+
   const updates: Record<string, unknown> = {}
   if (role !== undefined) updates.role = role
   if (is_active !== undefined) updates.is_active = is_active
@@ -61,5 +64,23 @@ export async function PATCH(request: NextRequest) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+
+  const { data: callerFull } = await supabase.from('profiles').select('full_name').eq('id', user.id).single()
+  const actorName = callerFull?.full_name || user.email || 'Unknown'
+  if (role !== undefined && target && role !== target.role) {
+    await logAudit(adminClient(), {
+      actorId: user.id, actorName, action: 'user_role_changed',
+      field: 'role', oldValue: target.role, newValue: role,
+      note: `Changed role for ${target.full_name}`,
+    })
+  }
+  if (is_active !== undefined && target && is_active !== target.is_active) {
+    await logAudit(adminClient(), {
+      actorId: user.id, actorName, action: 'user_status_changed',
+      field: 'is_active', oldValue: target.is_active, newValue: is_active,
+      note: `${is_active ? 'Activated' : 'Deactivated'} ${target.full_name}`,
+    })
+  }
+
   return NextResponse.json({ data })
 }
