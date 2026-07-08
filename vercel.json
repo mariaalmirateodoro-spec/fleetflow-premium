@@ -3,6 +3,7 @@
   "buildCommand": "next build",
   "outputDirectory": ".next",
   "installCommand": "npm install",
+  "regions": ["syd1"],
   "env": {
     "NEXT_PUBLIC_APP_NAME": "FleetFlow Premium"
   },
