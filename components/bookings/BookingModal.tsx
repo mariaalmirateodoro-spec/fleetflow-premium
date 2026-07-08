@@ -275,7 +275,7 @@ export function BookingModal({ open, onClose, booking, suppliers, profile, onSuc
         )}
 
         {/* Guest info */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="col-span-2 sm:col-span-1">
             <label className="block text-xs text-slate-400 mb-1.5 font-medium">Guest Name *</label>
             <input value={form.guest_name} onChange={(e) => update('guest_name', e.target.value)}
@@ -292,7 +292,7 @@ export function BookingModal({ open, onClose, booking, suppliers, profile, onSuc
         {/* Contact info */}
         <div className="rounded-xl border border-white/8 bg-white/[0.02] p-3 space-y-3">
           <p className="text-[11px] font-medium text-slate-400 uppercase tracking-wide">Guest Contact</p>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="flex items-center gap-1.5 text-xs text-slate-400 mb-1.5 font-medium">
                 <Phone className="w-3 h-3" /> Phone
@@ -333,7 +333,7 @@ export function BookingModal({ open, onClose, booking, suppliers, profile, onSuc
         </div>
 
         {/* Dates */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="block text-xs text-slate-400 mb-1.5 font-medium">Pickup Date & Time *</label>
             <input type="datetime-local" value={form.pickup_datetime} onChange={(e) => update('pickup_datetime', e.target.value)}
@@ -347,7 +347,7 @@ export function BookingModal({ open, onClose, booking, suppliers, profile, onSuc
         </div>
 
         {/* Locations */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="block text-xs text-slate-400 mb-1.5 font-medium">Pickup Location *</label>
             <LocationInput
@@ -371,7 +371,7 @@ export function BookingModal({ open, onClose, booking, suppliers, profile, onSuc
         </div>
 
         {/* Vehicle & AI */}
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           <div>
             <label className="block text-xs text-slate-400 mb-1.5 font-medium">Guest Count *</label>
             <input type="number" min={1} max={50} value={form.guest_count} onChange={(e) => update('guest_count', +e.target.value)}

@@ -58,21 +58,21 @@ export function Modal({ open, onClose, title, subtitle, children, size = 'md', c
         )}
       >
         {/* Header */}
-        <div className="flex items-start justify-between p-6 border-b border-white/8 shrink-0">
-          <div>
+        <div className="flex items-start justify-between p-4 sm:p-6 border-b border-white/8 shrink-0">
+          <div className="min-w-0">
             <h2 className="text-lg font-semibold text-white">{title}</h2>
             {subtitle && <p className="text-sm text-slate-400 mt-0.5">{subtitle}</p>}
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition-colors"
+            className="p-1.5 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition-colors shrink-0"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Body */}
-        <div className="p-6 overflow-y-auto">
+        <div className="p-4 sm:p-6 overflow-y-auto">
           {children}
         </div>
       </div>
