@@ -105,6 +105,18 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // `is_draft` is deliberately omitted from this payload when it's false
+    // (the normal, real-submission case) — Supabase's PostgREST layer has
+    // been intermittently losing track of columns/tables/functions that
+    // provably exist in the database (reported to Supabase support, ticket
+    // SU-415685), and `is_draft` was hit by that same bug, which was
+    // blocking EVERY real guest booking outright. Leaving it out of the
+    // payload lets the column's own DB-level default (false) apply instead
+    // of going through PostgREST's column-aware insert path for it. Drafts
+    // (isDraft === true) still explicitly set it, since there's no way to
+    // mark a row as a draft without referencing the column somehow — so
+    // draft-saving specifically may still fail while this Supabase issue is
+    // ongoing, but real submissions (the critical path) are unblocked.
     const { data, error } = await anonClient
       .from('bookings')
       .insert({
@@ -122,7 +134,7 @@ export async function POST(request: NextRequest) {
         driver_required: body.driver_required ?? true,
         special_requests: body.special_requests ?? null,
         status: 'pending',
-        is_draft: isDraft,
+        ...(isDraft ? { is_draft: true } : {}),
         created_by: null, // guest booking — no auth user
       })
       .select('id, reference_number')
