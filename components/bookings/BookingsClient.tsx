@@ -492,8 +492,10 @@ export function BookingsClient({ initialBookings, suppliers, drivers, profile }:
         </div>
       </div>
 
-      {/* Stats bar */}
-      <div className="flex gap-3 mb-4 text-xs">
+      {/* Stats bar — wraps to a second line on narrow screens instead of
+          overflowing off the right edge (completed/cancelled were getting
+          pushed off-screen on mobile with no way to reach them). */}
+      <div className="flex flex-wrap gap-2 sm:gap-3 mb-4 text-xs">
         {STATUSES.map((s) => {
           const count = bookings.filter((b) => b.status === s && !b.is_draft).length
           return (
