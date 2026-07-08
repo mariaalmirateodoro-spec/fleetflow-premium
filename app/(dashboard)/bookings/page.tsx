@@ -30,6 +30,12 @@ export default async function BookingsPage() {
     <div className="flex flex-col h-full overflow-hidden">
       <Topbar profile={profile} title="Bookings" subtitle="Manage all guest transport requests" />
       <div className="flex-1 overflow-y-auto p-6">
+        {bookingsError && (
+          <div className="mb-4 p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 text-sm font-mono whitespace-pre-wrap">
+            <p className="font-sans font-semibold text-red-200 mb-1">Bookings query failed — this banner is temporary, for diagnosis:</p>
+            {JSON.stringify(bookingsError, null, 2)}
+          </div>
+        )}
         <BookingsClient
           initialBookings={bookings ?? []}
           suppliers={suppliers ?? []}
