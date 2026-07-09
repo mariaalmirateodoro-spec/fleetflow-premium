@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
     .from('quotes')
     .select('*, suppliers(*)')
     .eq('booking_id', bookingId)
-    .order('total_amount')
+    .order('amount_usd')
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })
   return NextResponse.json({ data })

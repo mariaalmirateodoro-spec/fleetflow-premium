@@ -1,19 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { eq } from 'drizzle-orm'
 import { createClient } from '@/lib/supabase/server'
-import { createClient as createSupabaseClient } from '@supabase/supabase-js'
-import { logAudit } from '@/lib/audit'
-
-function createAdminClient() {
-  return createSupabaseClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } }
-  )
-}
+import { logAudit, adminClient } from '@/lib/audit'
+import { db, schema } from '@/lib/db'
 
 // Marks a quote as selected and assigns its supplier to the booking. Moved
 // server-side (from direct client-side Supabase writes) so supplier changes
 // made this way are audit-logged like other booking mutations.
+//
+// Talks directly to Postgres via Drizzle instead of PostgREST — also fixes
+// the same total_amount -> amount_usd column-name bug described in
+// ../route.ts (this handler used to select `total_amount`, which isn't a
+// real column, so it would have failed every time a quote was selected).
 export async function POST(
   _: NextRequest,
   { params }: { params: { id: string; quoteId: string } }
@@ -27,34 +25,42 @@ export async function POST(
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  const admin = createAdminClient()
+  const [existingBooking] = await db
+    .select({ assignedSupplier: schema.bookings.assignedSupplier })
+    .from(schema.bookings)
+    .where(eq(schema.bookings.id, params.id))
+    .limit(1)
 
-  const { data: existingBooking } = await admin.from('bookings').select('assigned_supplier').eq('id', params.id).single()
-  const { data: quote } = await admin.from('quotes').select('supplier_id, total_amount, suppliers(company_name)').eq('id', params.quoteId).single()
+  const [quote] = await db
+    .select({
+      supplierId: schema.quotes.supplierId,
+      amountUsd: schema.quotes.amountUsd,
+      supplierCompanyName: schema.suppliers.companyName,
+    })
+    .from(schema.quotes)
+    .leftJoin(schema.suppliers, eq(schema.quotes.supplierId, schema.suppliers.id))
+    .where(eq(schema.quotes.id, params.quoteId))
+    .limit(1)
 
   if (!quote) return NextResponse.json({ error: 'Quote not found' }, { status: 404 })
 
-  await admin.from('quotes').update({ is_selected: false }).eq('booking_id', params.id)
-  await admin.from('quotes').update({ is_selected: true }).eq('id', params.quoteId)
+  await db.update(schema.quotes).set({ isSelected: false }).where(eq(schema.quotes.bookingId, params.id))
+  await db.update(schema.quotes).set({ isSelected: true }).where(eq(schema.quotes.id, params.quoteId))
 
-  const { error } = await admin
-    .from('bookings')
-    .update({ status: 'quoted', assigned_supplier: quote.supplier_id })
-    .eq('id', params.id)
+  await db
+    .update(schema.bookings)
+    .set({ status: 'quoted', assignedSupplier: quote.supplierId })
+    .where(eq(schema.bookings.id, params.id))
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-
-  const supplierName = Array.isArray(quote.suppliers) ? quote.suppliers[0]?.company_name : (quote.suppliers as { company_name: string } | null)?.company_name
-
-  await logAudit(admin, {
+  await logAudit(adminClient(), {
     bookingId: params.id,
     actorId: user.id,
     actorName: profile.full_name || user.email || 'Unknown',
     action: 'quote_selected',
     field: 'assigned_supplier',
-    oldValue: existingBooking?.assigned_supplier ?? null,
-    newValue: quote.supplier_id,
-    note: `Selected quote from ${supplierName ?? 'supplier'} for ${quote.total_amount}`,
+    oldValue: existingBooking?.assignedSupplier ?? null,
+    newValue: quote.supplierId,
+    note: `Selected quote from ${quote.supplierCompanyName ?? 'supplier'} for ${quote.amountUsd}`,
   })
 
   return NextResponse.json({ success: true })
