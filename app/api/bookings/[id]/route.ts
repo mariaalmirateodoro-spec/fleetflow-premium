@@ -5,22 +5,119 @@ import { sendDriverAssignedEmail } from '@/lib/email'
 import { logAudit, adminClient } from '@/lib/audit'
 import { db, schema } from '@/lib/db'
 
-// GET (detail) still goes through supabase-js/PostgREST for now — it's a
-// read-only join query (profiles + suppliers + quotes) that isn't part of
-// the is_draft bug this migration targets. Slated for the general CRUD
-// sweep (Phase 2d) rather than rewritten here.
+// GET (detail) — not currently called from the frontend (BookingDetailModal
+// receives its `booking` prop directly from the already-fetched list, and
+// re-loads specific pieces like quotes via their own routes); migrated
+// anyway for consistency, in case anything else starts using it. Talks
+// directly to Postgres via Drizzle instead of PostgREST.
 export async function GET(_: NextRequest, { params }: { params: { id: string } }) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { data, error } = await supabase
-    .from('bookings')
-    .select('*, profiles!bookings_created_by_fkey(full_name), suppliers(*), quotes(*, suppliers(*))')
-    .eq('id', params.id)
-    .single()
+  const [row] = await db
+    .select({
+      b: schema.bookings,
+      creatorFullName: schema.profiles.fullName,
+      supplier: schema.suppliers,
+    })
+    .from(schema.bookings)
+    .leftJoin(schema.profiles, eq(schema.bookings.createdBy, schema.profiles.id))
+    .leftJoin(schema.suppliers, eq(schema.bookings.assignedSupplier, schema.suppliers.id))
+    .where(eq(schema.bookings.id, params.id))
+    .limit(1)
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 404 })
+  if (!row) return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
+
+  const quoteRows = await db
+    .select({ q: schema.quotes, supplier: schema.suppliers })
+    .from(schema.quotes)
+    .leftJoin(schema.suppliers, eq(schema.quotes.supplierId, schema.suppliers.id))
+    .where(eq(schema.quotes.bookingId, params.id))
+
+  const reshapeSupplier = (s: typeof schema.suppliers.$inferSelect | null) =>
+    s
+      ? {
+          id: s.id,
+          company_name: s.companyName,
+          contact_person: s.contactPerson,
+          phone: s.phone,
+          email: s.email,
+          address: s.address,
+          vehicle_types: s.vehicleTypes,
+          base_rate_usd: s.baseRateUsd != null ? Number(s.baseRateUsd) : null,
+          rating: s.rating != null ? Number(s.rating) : 0,
+          total_bookings: s.totalBookings,
+          is_available: s.isAvailable,
+          is_preferred: s.isPreferred,
+          notes: s.notes,
+          created_by: s.createdBy,
+          created_at: s.createdAt,
+          updated_at: s.updatedAt,
+        }
+      : undefined
+
+  const { b, creatorFullName, supplier } = row
+
+  const data = {
+    id: b.id,
+    reference_number: b.referenceNumber,
+    guest_name: b.guestName,
+    guest_nationality: b.guestNationality,
+    guest_count: b.guestCount,
+    guest_phone: b.guestPhone,
+    guest_email: b.guestEmail,
+    guest_line_id: b.guestLineId,
+    pickup_datetime: b.pickupDatetime,
+    dropoff_datetime: b.dropoffDatetime,
+    pickup_location: b.pickupLocation,
+    dropoff_location: b.dropoffLocation,
+    vehicle_type: b.vehicleType,
+    driver_required: b.driverRequired,
+    driver_id: b.driverId,
+    vehicle_plate: b.vehiclePlate,
+    vehicle_model: b.vehicleModel,
+    budget_usd: b.budgetUsd != null ? Number(b.budgetUsd) : null,
+    final_cost_usd: b.finalCostUsd != null ? Number(b.finalCostUsd) : null,
+    status: b.status,
+    notes: b.notes,
+    special_requests: b.specialRequests,
+    assigned_supplier: b.assignedSupplier,
+    created_by: b.createdBy,
+    approved_by: b.approvedBy,
+    approved_at: b.approvedAt,
+    completed_at: b.completedAt,
+    cancelled_at: b.cancelledAt,
+    cancellation_reason: b.cancellationReason,
+    created_at: b.createdAt,
+    updated_at: b.updatedAt,
+    is_draft: b.isDraft,
+    modification_status: b.modificationStatus,
+    modification_pickup_datetime: b.modificationPickupDatetime,
+    modification_pickup_location: b.modificationPickupLocation,
+    modification_dropoff_location: b.modificationDropoffLocation,
+    modification_notes: b.modificationNotes,
+    modification_requested_at: b.modificationRequestedAt,
+    profiles: creatorFullName != null ? { full_name: creatorFullName } : undefined,
+    suppliers: reshapeSupplier(supplier),
+    quotes: quoteRows.map(({ q, supplier: qs }) => ({
+      id: q.id,
+      booking_id: q.bookingId,
+      supplier_id: q.supplierId,
+      amount_usd: Number(q.amountUsd),
+      includes_driver: q.includesDriver,
+      vehicle_model: q.vehicleModel,
+      estimated_duration_hours: q.estimatedDurationHours != null ? Number(q.estimatedDurationHours) : null,
+      valid_until: q.validUntil,
+      notes: q.notes,
+      is_selected: q.isSelected,
+      invoice_path: q.invoicePath,
+      created_by: q.createdBy,
+      created_at: q.createdAt,
+      suppliers: reshapeSupplier(qs),
+    })),
+  }
+
   return NextResponse.json({ data })
 }
 
