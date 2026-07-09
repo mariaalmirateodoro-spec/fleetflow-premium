@@ -122,6 +122,15 @@ export async function DELETE(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  // Admin only — matches the equivalent check on suppliers DELETE, and the
+  // delete button is only rendered for admins in DriversClient.tsx. Missing
+  // here before this fix: under the old PostgREST setup this was still
+  // blocked at the database level by RLS ("Admins can delete drivers"); now
+  // that Drizzle talks to Postgres as a role that bypasses RLS entirely,
+  // this app-level check is the only thing enforcing it.
+  const { data: profile } = await supabase.from('profiles').select('role, full_name').eq('id', user.id).single()
+  if (profile?.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
   const { searchParams } = new URL(request.url)
   const id = searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
@@ -135,7 +144,6 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: message }, { status: 400 })
   }
 
-  const { data: profile } = await supabase.from('profiles').select('full_name').eq('id', user.id).single()
   await logAudit(adminClient(), {
     actorId: user.id,
     actorName: profile?.full_name || user.email || 'Unknown',
