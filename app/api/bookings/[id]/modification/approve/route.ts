@@ -36,13 +36,9 @@ export async function POST(
     return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
   }
 
-  // Only the booking's creator, or an admin/manager, can act on it — matches
-  // the old RLS policy ("Staff can update own bookings; admins/managers can
-  // update any"), which silently blocked everyone else at the database
-  // level before this route talked directly to Postgres.
-  if (booking.createdBy !== user.id && !['admin', 'manager'].includes(profile?.role ?? '')) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
+  // Any authenticated staff member (per the role check above) can act on
+  // any booking's modification request (not restricted to the creator or
+  // admin/manager) — explicit product decision.
 
   if (booking.modificationStatus !== 'pending') {
     return NextResponse.json({ error: 'No pending modification request' }, { status: 400 })

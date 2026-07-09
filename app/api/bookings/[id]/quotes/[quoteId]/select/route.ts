@@ -26,22 +26,12 @@ export async function POST(
   }
 
   const [existingBooking] = await db
-    .select({ assignedSupplier: schema.bookings.assignedSupplier, createdBy: schema.bookings.createdBy })
+    .select({ assignedSupplier: schema.bookings.assignedSupplier })
     .from(schema.bookings)
     .where(eq(schema.bookings.id, params.id))
     .limit(1)
 
   if (!existingBooking) return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
-
-  // Selecting a quote also updates the booking (assigned supplier, status),
-  // so it's gated the same way as editing a booking directly — only the
-  // creator, or an admin/manager. Matches the old RLS policy ("Staff can
-  // update own bookings; admins/managers can update any"), which silently
-  // blocked everyone else at the database level before this route talked
-  // directly to Postgres.
-  if (existingBooking.createdBy !== user.id && !['admin', 'manager'].includes(profile.role)) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
 
   const [quote] = await db
     .select({
