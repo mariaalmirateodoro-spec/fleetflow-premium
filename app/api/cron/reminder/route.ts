@@ -1,12 +1,9 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { and, eq, gte, isNotNull, lte } from 'drizzle-orm'
 import { sendTripReminderEmail } from '@/lib/email'
+import { db, schema } from '@/lib/db'
 
-const adminSupabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
-
+// Talks directly to Postgres via Drizzle instead of PostgREST.
 export async function GET(request: Request) {
   // Verify this is called by Vercel Cron
   const authHeader = request.headers.get('authorization')
@@ -21,57 +18,61 @@ export async function GET(request: Request) {
   const in16h = new Date(now.getTime() + 16 * 60 * 60 * 1000).toISOString()
   const in40h = new Date(now.getTime() + 40 * 60 * 60 * 1000).toISOString()
 
-  const { data: bookings, error: fetchError } = await adminSupabase
-    .from('bookings')
-    .select(`
-      id, reference_number, guest_name, guest_email,
-      pickup_location, dropoff_location, pickup_datetime, vehicle_type,
-      vehicle_plate, vehicle_model,
-      drivers(full_name, phone)
-    `)
-    .eq('status', 'approved')
-    .gte('pickup_datetime', in16h)
-    .lte('pickup_datetime', in40h)
-    .not('guest_email', 'is', null)
+  const rows = await db
+    .select({
+      id: schema.bookings.id,
+      referenceNumber: schema.bookings.referenceNumber,
+      guestName: schema.bookings.guestName,
+      guestEmail: schema.bookings.guestEmail,
+      pickupLocation: schema.bookings.pickupLocation,
+      dropoffLocation: schema.bookings.dropoffLocation,
+      pickupDatetime: schema.bookings.pickupDatetime,
+      vehicleType: schema.bookings.vehicleType,
+      vehiclePlate: schema.bookings.vehiclePlate,
+      vehicleModel: schema.bookings.vehicleModel,
+      driverFullName: schema.drivers.fullName,
+      driverPhone: schema.drivers.phone,
+    })
+    .from(schema.bookings)
+    .leftJoin(schema.drivers, eq(schema.bookings.driverId, schema.drivers.id))
+    .where(
+      and(
+        eq(schema.bookings.status, 'approved'),
+        gte(schema.bookings.pickupDatetime, in16h),
+        lte(schema.bookings.pickupDatetime, in40h),
+        isNotNull(schema.bookings.guestEmail)
+      )
+    )
 
-  if (fetchError) {
-    console.error('[reminder] fetch error:', fetchError)
-    return NextResponse.json({ error: fetchError.message }, { status: 500 })
-  }
-
-  if (!bookings || bookings.length === 0) {
+  if (rows.length === 0) {
     return NextResponse.json({ message: 'No upcoming bookings to remind', sent: 0 })
   }
 
   let sent = 0
   const errors: string[] = []
 
-  for (const booking of bookings) {
+  for (const booking of rows) {
     try {
-      const driver = Array.isArray(booking.drivers)
-        ? booking.drivers[0]
-        : booking.drivers as { full_name: string; phone: string } | null
-
       await sendTripReminderEmail({
-        guestName: booking.guest_name,
-        guestEmail: booking.guest_email!,
-        referenceNumber: booking.reference_number,
-        pickupLocation: booking.pickup_location,
-        dropoffLocation: booking.dropoff_location,
-        pickupDatetime: booking.pickup_datetime,
-        vehicleType: booking.vehicle_type,
-        driverName: driver?.full_name ?? null,
-        driverPhone: driver?.phone ?? null,
-        vehiclePlate: booking.vehicle_plate ?? null,
-        vehicleModel: booking.vehicle_model ?? null,
+        guestName: booking.guestName ?? '',
+        guestEmail: booking.guestEmail!,
+        referenceNumber: booking.referenceNumber,
+        pickupLocation: booking.pickupLocation ?? '',
+        dropoffLocation: booking.dropoffLocation ?? '',
+        pickupDatetime: booking.pickupDatetime ?? '',
+        vehicleType: booking.vehicleType,
+        driverName: booking.driverFullName ?? null,
+        driverPhone: booking.driverPhone ?? null,
+        vehiclePlate: booking.vehiclePlate ?? null,
+        vehicleModel: booking.vehicleModel ?? null,
       })
 
       sent++
-      console.log(`[reminder] sent to ${booking.guest_email} for ref ${booking.reference_number}`)
+      console.log(`[reminder] sent to ${booking.guestEmail} for ref ${booking.referenceNumber}`)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      errors.push(`${booking.reference_number}: ${msg}`)
-      console.error(`[reminder] failed for ${booking.reference_number}:`, err)
+      errors.push(`${booking.referenceNumber}: ${msg}`)
+      console.error(`[reminder] failed for ${booking.referenceNumber}:`, err)
     }
   }
 
