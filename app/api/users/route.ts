@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { asc, eq } from 'drizzle-orm'
 import { createClient } from '@/lib/supabase/server'
 import { logAudit, adminClient } from '@/lib/audit'
+import { db, schema } from '@/lib/db'
 
+// Talks directly to Postgres via Drizzle instead of PostgREST.
 export async function GET() {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -18,12 +21,25 @@ export async function GET() {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('*')
-    .order('full_name')
+  const rows = await db
+    .select()
+    .from(schema.profiles)
+    .orderBy(asc(schema.profiles.fullName))
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+  const data = rows.map((p) => ({
+    id: p.id,
+    email: p.email,
+    full_name: p.fullName,
+    role: p.role,
+    avatar_url: p.avatarUrl,
+    department: p.department,
+    phone: p.phone,
+    is_active: p.isActive,
+    last_login_at: p.lastLoginAt,
+    created_at: p.createdAt,
+    updated_at: p.updatedAt,
+  }))
+
   return NextResponse.json({ data })
 }
 
@@ -50,36 +66,57 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: 'Cannot change your own role' }, { status: 400 })
   }
 
-  const { data: target } = await supabase.from('profiles').select('role, is_active, full_name').eq('id', userId).single()
+  const [target] = await db
+    .select({ role: schema.profiles.role, isActive: schema.profiles.isActive, fullName: schema.profiles.fullName })
+    .from(schema.profiles)
+    .where(eq(schema.profiles.id, userId))
+    .limit(1)
 
-  const updates: Record<string, unknown> = {}
+  const updates: { role?: 'admin' | 'staff' | 'manager' | 'finance'; isActive?: boolean } = {}
   if (role !== undefined) updates.role = role
-  if (is_active !== undefined) updates.is_active = is_active
+  if (is_active !== undefined) updates.isActive = is_active
 
-  const { data, error } = await supabase
-    .from('profiles')
-    .update(updates)
-    .eq('id', userId)
-    .select()
-    .single()
+  const [updated] = await db
+    .update(schema.profiles)
+    .set(updates)
+    .where(eq(schema.profiles.id, userId))
+    .returning()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+  if (!updated) return NextResponse.json({ error: 'User not found' }, { status: 404 })
 
-  const { data: callerFull } = await supabase.from('profiles').select('full_name').eq('id', user.id).single()
-  const actorName = callerFull?.full_name || user.email || 'Unknown'
+  const [callerFull] = await db
+    .select({ fullName: schema.profiles.fullName })
+    .from(schema.profiles)
+    .where(eq(schema.profiles.id, user.id))
+    .limit(1)
+  const actorName = callerFull?.fullName || user.email || 'Unknown'
   if (role !== undefined && target && role !== target.role) {
     await logAudit(adminClient(), {
       actorId: user.id, actorName, action: 'user_role_changed',
       field: 'role', oldValue: target.role, newValue: role,
-      note: `Changed role for ${target.full_name}`,
+      note: `Changed role for ${target.fullName}`,
     })
   }
-  if (is_active !== undefined && target && is_active !== target.is_active) {
+  if (is_active !== undefined && target && is_active !== target.isActive) {
     await logAudit(adminClient(), {
       actorId: user.id, actorName, action: 'user_status_changed',
-      field: 'is_active', oldValue: target.is_active, newValue: is_active,
-      note: `${is_active ? 'Activated' : 'Deactivated'} ${target.full_name}`,
+      field: 'is_active', oldValue: target.isActive, newValue: is_active,
+      note: `${is_active ? 'Activated' : 'Deactivated'} ${target.fullName}`,
     })
+  }
+
+  const data = {
+    id: updated.id,
+    email: updated.email,
+    full_name: updated.fullName,
+    role: updated.role,
+    avatar_url: updated.avatarUrl,
+    department: updated.department,
+    phone: updated.phone,
+    is_active: updated.isActive,
+    last_login_at: updated.lastLoginAt,
+    created_at: updated.createdAt,
+    updated_at: updated.updatedAt,
   }
 
   return NextResponse.json({ data })
