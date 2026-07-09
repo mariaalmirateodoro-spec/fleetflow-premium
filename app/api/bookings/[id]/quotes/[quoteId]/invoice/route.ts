@@ -1,20 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { eq } from 'drizzle-orm'
 import { createClient } from '@/lib/supabase/server'
-import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { logAudit, adminClient } from '@/lib/audit'
 import { db, schema } from '@/lib/db'
 
-// Only used below for Supabase Storage (signed URLs) — a separate service
-// from the database/PostgREST, unaffected by the schema-cache bug and not
+// adminClient() (from lib/audit.ts) is only used below for Supabase Storage
+// (signed URLs) — a separate service from the database/PostgREST, not
 // something Drizzle has any concept of, so it stays on supabase-js.
-function createAdminClient() {
-  return createSupabaseClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } }
-  )
-}
 
 // Called after the browser has already uploaded the file straight to
 // Supabase Storage (bucket: supplier-invoices). This just records which
@@ -81,7 +73,7 @@ export async function GET(
     .limit(1)
   if (!quote?.invoicePath) return NextResponse.json({ error: 'No invoice on file' }, { status: 404 })
 
-  const admin = createAdminClient()
+  const admin = adminClient()
   const { data, error } = await admin.storage
     .from('supplier-invoices')
     .createSignedUrl(quote.invoicePath, 60)
