@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { createNotification } from '@/lib/notifications'
+import { db, schema } from '@/lib/db'
 import { sendBookingApprovedEmail, sendBookingRejectedEmail } from '@/lib/email'
 
 export async function GET(request: NextRequest) {
@@ -78,13 +78,15 @@ export async function POST(request: NextRequest) {
     }
 
     // Internal notification for staff users
-    await createNotification({
-      userId: booking.created_by,
-      title: `Booking ${actionLabels[action] ?? action}`,
-      message: `Booking ${booking.reference_number} has been ${actionLabels[action] ?? action}.${comments ? ` Comment: ${comments}` : ''}`,
-      type: action === 'approved' ? 'approved' : 'system',
-      bookingId: booking_id,
-    })
+    if (booking.created_by) {
+      await db.insert(schema.notifications).values({
+        userId: booking.created_by,
+        title: `Booking ${actionLabels[action] ?? action}`,
+        message: `Booking ${booking.reference_number} has been ${actionLabels[action] ?? action}.${comments ? ` Comment: ${comments}` : ''}`,
+        type: action === 'approved' ? 'approved' : 'system',
+        bookingId: booking_id,
+      })
+    }
 
     // Email notification to guest
     if (booking.guest_email) {
