@@ -115,8 +115,16 @@ export async function POST(request: NextRequest) {
     // a lightweight "here's how to get back to it" email since it's the only
     // recovery path if the guest closes the tab.
     if (isDraft) {
-      sendDraftSavedEmail(body.guest_email, created.referenceNumber)
-        .catch((err) => console.error('[email] draft-saved failed:', err))
+      // Awaited (not fire-and-forget) — on Vercel's serverless runtime, an
+      // un-awaited promise can get cut off the moment the response is sent,
+      // silently killing the email before it actually goes out. Still
+      // wrapped in try/catch so an email failure never fails the draft save
+      // itself.
+      try {
+        await sendDraftSavedEmail(body.guest_email, created.referenceNumber)
+      } catch (err) {
+        console.error('[email] draft-saved failed:', err)
+      }
       return NextResponse.json({ reference_number: created.referenceNumber, is_draft: true }, { status: 201 })
     }
 
@@ -138,19 +146,27 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Send confirmation email to guest (non-blocking — don't fail the booking if email fails)
-    sendBookingConfirmationEmail({
-      guestName: body.guest_name,
-      guestEmail: body.guest_email,
-      referenceNumber: created.referenceNumber,
-      pickupLocation: body.pickup_location,
-      dropoffLocation: body.dropoff_location,
-      pickupDatetime: body.pickup_datetime,
-      dropoffDatetime: body.dropoff_datetime ?? null,
-      vehicleType: body.vehicle_type,
-      guestCount: Number(body.guest_count),
-      specialRequests: body.special_requests ?? null,
-    }).catch((err) => console.error('[email] confirmation failed:', err))
+    // Send confirmation email to guest. Awaited (not fire-and-forget) — on
+    // Vercel's serverless runtime an un-awaited promise can get cut off the
+    // moment the response is sent, silently killing the email before it
+    // goes out. Still wrapped in try/catch so an email failure never fails
+    // the booking itself.
+    try {
+      await sendBookingConfirmationEmail({
+        guestName: body.guest_name,
+        guestEmail: body.guest_email,
+        referenceNumber: created.referenceNumber,
+        pickupLocation: body.pickup_location,
+        dropoffLocation: body.dropoff_location,
+        pickupDatetime: body.pickup_datetime,
+        dropoffDatetime: body.dropoff_datetime ?? null,
+        vehicleType: body.vehicle_type,
+        guestCount: Number(body.guest_count),
+        specialRequests: body.special_requests ?? null,
+      })
+    } catch (err) {
+      console.error('[email] confirmation failed:', err)
+    }
 
     return NextResponse.json({ reference_number: created.referenceNumber }, { status: 201 })
   } catch (err) {
