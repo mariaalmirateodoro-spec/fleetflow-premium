@@ -341,8 +341,20 @@ export async function DELETE(_: NextRequest, { params }: { params: { id: string 
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   // Admin only — verify via user session
-  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
+  const { data: profile } = await supabase.from('profiles').select('role, full_name').eq('id', user.id).single()
   if (profile?.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  // Grab identifying details before deleting — this was never wired up to
+  // the Activity Log, so deletions were both unlogged AND (since
+  // audit_log.booking_id cascades on delete) would have wiped out any prior
+  // history for the booking too. Logged with bookingId: null (the booking
+  // won't exist anymore) and the reference number in the note instead, so
+  // this entry survives the delete.
+  const [toDelete] = await db
+    .select({ referenceNumber: schema.bookings.referenceNumber, guestName: schema.bookings.guestName })
+    .from(schema.bookings)
+    .where(eq(schema.bookings.id, params.id))
+    .limit(1)
 
   try {
     await db.delete(schema.notifications).where(eq(schema.notifications.bookingId, params.id))
@@ -353,6 +365,16 @@ export async function DELETE(_: NextRequest, { params }: { params: { id: string 
     const message = err instanceof Error ? err.message : 'Failed to delete booking'
     return NextResponse.json({ error: message }, { status: 400 })
   }
+
+  await logAudit(adminClient(), {
+    bookingId: null,
+    actorId: user.id,
+    actorName: profile.full_name || user.email || 'Unknown',
+    action: 'booking_deleted',
+    note: toDelete
+      ? `Deleted booking ${toDelete.referenceNumber}${toDelete.guestName ? ` (${toDelete.guestName})` : ''}`
+      : `Deleted booking ${params.id}`,
+  })
 
   return NextResponse.json({ success: true })
 }
