@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { notifyManagers } from '@/lib/notifications'
 import { logAudit, adminClient } from '@/lib/audit'
+import { db, schema } from '@/lib/db'
 
+// GET (list) still goes through supabase-js/PostgREST for now — it's a
+// read-only join query (profiles + suppliers) that isn't part of the
+// is_draft bug this migration targets, and isn't broken today. Slated for
+// the general CRUD sweep (Phase 2d) rather than rewritten here.
 export async function GET(request: NextRequest) {
   try {
     const supabase = createClient()
@@ -33,6 +38,13 @@ export async function GET(request: NextRequest) {
   }
 }
 
+// Staff "New Booking" create — talks directly to Postgres via Drizzle (see
+// lib/db) instead of PostgREST. Used to need the fleetflow_set_is_draft RPC
+// as a workaround for PostgREST losing track of the is_draft column (ticket
+// SU-415685); not needed anymore since this route no longer touches
+// PostgREST at all. auth.getUser() below is Supabase Auth, a separate
+// service from PostgREST/the database — unaffected by that bug, so it's
+// intentionally left as-is.
 export async function POST(request: NextRequest) {
   try {
     const supabase = createClient()
@@ -40,51 +52,52 @@ export async function POST(request: NextRequest) {
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const body = await request.json()
+    const isDraft = body.is_draft === true
 
-    // `is_draft` is pulled out of the insert payload — the staff "New
-    // Booking" modal always sends it explicitly (true or false), and
-    // writing it directly here hits the same PostgREST schema-cache bug
-    // that was blocking guest draft bookings (ticket SU-415685): "Could not
-    // find the 'is_draft' column of 'bookings' in the schema cache", even
-    // though the column exists. False is the column's own DB default, so
-    // leaving it out is free; true gets set right after via a small RPC
-    // that writes the column with plain SQL inside the database instead of
-    // going through PostgREST's column-aware insert parsing.
-    const { is_draft, ...bodyWithoutDraft } = body
-    const isDraft = is_draft === true
+    const [created] = await db
+      .insert(schema.bookings)
+      .values({
+        guestName: body.guest_name ?? null,
+        guestNationality: body.guest_nationality ?? null,
+        guestCount: body.guest_count != null ? Number(body.guest_count) : 1,
+        guestPhone: body.guest_phone ?? null,
+        guestEmail: body.guest_email ?? null,
+        guestLineId: body.guest_line_id ?? null,
+        pickupDatetime: body.pickup_datetime ?? null,
+        dropoffDatetime: body.dropoff_datetime ?? null,
+        pickupLocation: body.pickup_location ?? null,
+        dropoffLocation: body.dropoff_location ?? null,
+        vehicleType: body.vehicle_type || 'sedan',
+        driverRequired: body.driver_required ?? false,
+        budgetUsd: body.budget_usd != null ? String(body.budget_usd) : null,
+        notes: body.notes ?? null,
+        specialRequests: body.special_requests ?? null,
+        isDraft,
+        createdBy: user.id,
+      })
+      .returning()
 
-    const { data, error } = await supabase
-      .from('bookings')
-      .insert({ ...bodyWithoutDraft, created_by: user.id })
-      .select()
-      .single()
-
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-
-    if (isDraft) {
-      const { error: draftError } = await adminClient().rpc('fleetflow_set_is_draft', { p_id: data.id, p_is_draft: true })
-      if (draftError) console.error('[bookings] failed to set is_draft:', draftError)
-      else data.is_draft = true
-    }
+    if (!created) return NextResponse.json({ error: 'Failed to create booking' }, { status: 400 })
 
     // Notify managers
     await notifyManagers(
       'New Transport Request',
-      `New booking ${data.reference_number} for ${data.guest_name} requires review.`,
-      data.id
+      `New booking ${created.referenceNumber} for ${created.guestName} requires review.`,
+      created.id
     )
 
     const { data: profile } = await supabase.from('profiles').select('full_name').eq('id', user.id).single()
     await logAudit(adminClient(), {
-      bookingId: data.id,
+      bookingId: created.id,
       actorId: user.id,
       actorName: profile?.full_name || user.email || 'Unknown',
       action: 'booking_created',
-      note: `Created booking ${data.reference_number} for ${data.guest_name}`,
+      note: `Created booking ${created.referenceNumber} for ${created.guestName}`,
     })
 
-    return NextResponse.json({ data }, { status: 201 })
-  } catch {
+    return NextResponse.json({ data: created }, { status: 201 })
+  } catch (err) {
+    console.error('[bookings] POST error:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

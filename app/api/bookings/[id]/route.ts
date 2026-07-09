@@ -1,18 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { eq } from 'drizzle-orm'
 import { createClient } from '@/lib/supabase/server'
-import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { sendDriverAssignedEmail } from '@/lib/email'
-import { logAudit } from '@/lib/audit'
+import { logAudit, adminClient } from '@/lib/audit'
+import { db, schema } from '@/lib/db'
 
-// Bypasses RLS — only used server-side for admin cascade deletes
-function createAdminClient() {
-  return createSupabaseClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } }
-  )
-}
-
+// GET (detail) still goes through supabase-js/PostgREST for now — it's a
+// read-only join query (profiles + suppliers + quotes) that isn't part of
+// the is_draft bug this migration targets. Slated for the general CRUD
+// sweep (Phase 2d) rather than rewritten here.
 export async function GET(_: NextRequest, { params }: { params: { id: string } }) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -28,6 +24,15 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
   return NextResponse.json({ data })
 }
 
+// Staff "Edit Booking" update (also used for single-field patches: driver
+// assignment, vehicle plate/model, final cost) — talks directly to Postgres
+// via Drizzle (see lib/db) instead of PostgREST. Used to need the
+// fleetflow_get_is_draft / fleetflow_set_is_draft RPCs as a workaround for
+// PostgREST losing track of the is_draft column (ticket SU-415685); not
+// needed anymore since this route no longer touches PostgREST at all.
+// auth.getUser() below is Supabase Auth, a separate service from
+// PostgREST/the database — unaffected by that bug, so it's intentionally
+// left as-is.
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -40,7 +45,6 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     .single()
 
   const body = await request.json()
-  const admin = createAdminClient()
 
   // Final cost changes have money-movement implications — restrict to
   // admin/manager (a plain staff account could otherwise quietly adjust the
@@ -49,75 +53,104 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     return NextResponse.json({ error: 'Only admins and managers can change the final cost.' }, { status: 403 })
   }
 
-  // `is_draft` is pulled out of the update payload before it ever reaches
-  // supabase-js — the staff "Edit Booking" modal always sends it explicitly
-  // (true or false), and writing it directly (or selecting it by name) hits
-  // the same PostgREST schema-cache bug that was blocking guest draft
-  // bookings (ticket SU-415685). It's read/written separately below via a
-  // small RPC that runs plain SQL inside the database instead of going
-  // through PostgREST's column-aware request parsing.
-  const { is_draft: newIsDraft, ...bodyWithoutDraft } = body
-
-  // Fetch current values for anything we might need to audit or compare against.
-  // Includes every field the staff "Edit Booking" form can send, so the
-  // catch-all diff below only reports fields that actually changed.
-  const { data: existing } = await admin
-    .from('bookings')
-    .select('driver_id, final_cost_usd, guest_email, guest_name, reference_number, pickup_location, dropoff_location, pickup_datetime, dropoff_datetime, vehicle_type, vehicle_plate, vehicle_model, guest_nationality, guest_count, guest_phone, guest_line_id, driver_required, budget_usd, notes, special_requests')
-    .eq('id', params.id)
-    .single()
+  // Fetch current values for anything we might need to audit or compare
+  // against. Includes every field the staff "Edit Booking" form can send,
+  // so the catch-all diff below only reports fields that actually changed.
+  const [existing] = await db
+    .select({
+      driverId: schema.bookings.driverId,
+      finalCostUsd: schema.bookings.finalCostUsd,
+      guestEmail: schema.bookings.guestEmail,
+      guestName: schema.bookings.guestName,
+      guestNationality: schema.bookings.guestNationality,
+      guestCount: schema.bookings.guestCount,
+      guestPhone: schema.bookings.guestPhone,
+      guestLineId: schema.bookings.guestLineId,
+      referenceNumber: schema.bookings.referenceNumber,
+      pickupLocation: schema.bookings.pickupLocation,
+      dropoffLocation: schema.bookings.dropoffLocation,
+      pickupDatetime: schema.bookings.pickupDatetime,
+      dropoffDatetime: schema.bookings.dropoffDatetime,
+      vehicleType: schema.bookings.vehicleType,
+      vehiclePlate: schema.bookings.vehiclePlate,
+      vehicleModel: schema.bookings.vehicleModel,
+      driverRequired: schema.bookings.driverRequired,
+      budgetUsd: schema.bookings.budgetUsd,
+      notes: schema.bookings.notes,
+      specialRequests: schema.bookings.specialRequests,
+    })
+    .from(schema.bookings)
+    .where(eq(schema.bookings.id, params.id))
+    .limit(1)
 
   // If a driver is being assigned, check whether it's a new/changed assignment
   let shouldEmailDriver = false
-  let assignedDriver: { full_name: string; phone: string } | null = null
+  let assignedDriver: { fullName: string; phone: string } | null = null
 
-  if (body.driver_id != null && existing && existing.driver_id !== body.driver_id && existing.guest_email) {
-    const { data: driver } = await admin
-      .from('drivers')
-      .select('full_name, phone')
-      .eq('id', body.driver_id)
-      .single()
+  if (body.driver_id != null && existing && existing.driverId !== body.driver_id && existing.guestEmail) {
+    const [driver] = await db
+      .select({ fullName: schema.drivers.fullName, phone: schema.drivers.phone })
+      .from(schema.drivers)
+      .where(eq(schema.drivers.id, body.driver_id))
+      .limit(1)
 
     if (driver) {
       shouldEmailDriver = true
-      assignedDriver = driver as { full_name: string; phone: string }
+      assignedDriver = driver
     }
   }
 
-  // Use admin client to bypass RLS for booking updates
-  const { data, error } = await admin
-    .from('bookings')
-    .update(bodyWithoutDraft)
-    .eq('id', params.id)
-    .select()
-    .single()
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-
-  if (newIsDraft !== undefined) {
-    const { error: draftError } = await admin.rpc('fleetflow_set_is_draft', {
-      p_id: params.id,
-      p_is_draft: newIsDraft === true,
+  const [data] = await db
+    .update(schema.bookings)
+    .set({
+      guestName: 'guest_name' in body ? (body.guest_name === '' ? null : body.guest_name ?? null) : undefined,
+      guestNationality: 'guest_nationality' in body ? (body.guest_nationality === '' ? null : body.guest_nationality ?? null) : undefined,
+      guestCount: body.guest_count != null ? Number(body.guest_count) : undefined,
+      guestPhone: 'guest_phone' in body ? (body.guest_phone === '' ? null : body.guest_phone ?? null) : undefined,
+      guestEmail: 'guest_email' in body ? (body.guest_email === '' ? null : body.guest_email ?? null) : undefined,
+      guestLineId: 'guest_line_id' in body ? (body.guest_line_id === '' ? null : body.guest_line_id ?? null) : undefined,
+      pickupDatetime: 'pickup_datetime' in body ? (body.pickup_datetime ?? null) : undefined,
+      dropoffDatetime: 'dropoff_datetime' in body ? (body.dropoff_datetime ?? null) : undefined,
+      pickupLocation: 'pickup_location' in body ? (body.pickup_location === '' ? null : body.pickup_location ?? null) : undefined,
+      dropoffLocation: 'dropoff_location' in body ? (body.dropoff_location === '' ? null : body.dropoff_location ?? null) : undefined,
+      vehicleType: 'vehicle_type' in body && body.vehicle_type ? body.vehicle_type : undefined,
+      driverRequired: 'driver_required' in body ? body.driver_required : undefined,
+      budgetUsd: 'budget_usd' in body ? (body.budget_usd != null ? String(body.budget_usd) : null) : undefined,
+      notes: 'notes' in body ? (body.notes === '' ? null : body.notes ?? null) : undefined,
+      specialRequests: 'special_requests' in body ? (body.special_requests === '' ? null : body.special_requests ?? null) : undefined,
+      driverId: 'driver_id' in body ? body.driver_id : undefined,
+      vehiclePlate: 'vehicle_plate' in body ? body.vehicle_plate : undefined,
+      vehicleModel: 'vehicle_model' in body ? body.vehicle_model : undefined,
+      finalCostUsd: 'final_cost_usd' in body ? (body.final_cost_usd != null ? String(body.final_cost_usd) : null) : undefined,
+      isDraft: 'is_draft' in body ? body.is_draft === true : undefined,
     })
-    if (draftError) console.error('[bookings] failed to set is_draft:', draftError)
-    else data.is_draft = newIsDraft === true
-  }
+    .where(eq(schema.bookings.id, params.id))
+    .returning()
+
+  if (!data) return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
+
+  const admin = adminClient()
+  const actorName = profile?.full_name || user.email || 'Unknown'
 
   // Audit trail — only for the fields that matter for accountability.
-  const actorName = profile?.full_name || user.email || 'Unknown'
   if (existing) {
-    if (body.final_cost_usd !== undefined && body.final_cost_usd !== existing.final_cost_usd) {
+    // final_cost_usd comes back from Drizzle as a string (numeric columns
+    // use string mode to avoid float precision loss) but arrives in the
+    // request body as a number — normalize both to Number before comparing,
+    // otherwise "150" !== 150 would falsely log a change on every save.
+    const existingFinalCost = existing.finalCostUsd != null ? Number(existing.finalCostUsd) : null
+    if (body.final_cost_usd !== undefined && Number(body.final_cost_usd) !== existingFinalCost) {
       await logAudit(admin, {
         bookingId: params.id, actorId: user.id, actorName,
         action: 'final_cost_changed', field: 'final_cost_usd',
-        oldValue: existing.final_cost_usd, newValue: body.final_cost_usd,
+        oldValue: existing.finalCostUsd, newValue: body.final_cost_usd,
       })
     }
-    if (body.driver_id !== undefined && body.driver_id !== existing.driver_id) {
+    if (body.driver_id !== undefined && body.driver_id !== existing.driverId) {
       await logAudit(admin, {
         bookingId: params.id, actorId: user.id, actorName,
         action: 'driver_changed', field: 'driver_id',
-        oldValue: existing.driver_id, newValue: body.driver_id,
+        oldValue: existing.driverId, newValue: body.driver_id,
       })
     }
   }
@@ -128,12 +161,43 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   // against the fetched "existing" row above, not just "was this key present
   // in the request body" — the edit form resends the whole payload every
   // time, so a naive presence-check would falsely claim every field changed.
+  // Explicit snake_case (request body) -> camelCase (Drizzle row) mapping,
+  // since the two no longer share identical key names the way the old
+  // supabase-js response (always snake_case) did.
   if (existing) {
-    const changedKeys = Object.keys(body).filter((k) => {
-      if (['final_cost_usd', 'driver_id'].includes(k)) return false
-      if (!(k in existing)) return false
-      return body[k] !== (existing as Record<string, unknown>)[k]
-    })
+    const fieldMap: Array<[string, keyof typeof existing]> = [
+      ['guest_name', 'guestName'],
+      ['guest_nationality', 'guestNationality'],
+      ['guest_count', 'guestCount'],
+      ['guest_phone', 'guestPhone'],
+      ['guest_email', 'guestEmail'],
+      ['guest_line_id', 'guestLineId'],
+      ['pickup_location', 'pickupLocation'],
+      ['dropoff_location', 'dropoffLocation'],
+      ['pickup_datetime', 'pickupDatetime'],
+      ['dropoff_datetime', 'dropoffDatetime'],
+      ['vehicle_type', 'vehicleType'],
+      ['vehicle_plate', 'vehiclePlate'],
+      ['vehicle_model', 'vehicleModel'],
+      ['driver_required', 'driverRequired'],
+      ['budget_usd', 'budgetUsd'],
+      ['notes', 'notes'],
+      ['special_requests', 'specialRequests'],
+    ]
+
+    const changedKeys = fieldMap
+      .filter(([bodyKey]) => bodyKey in body)
+      .filter(([bodyKey, existingKey]) => {
+        const newVal = body[bodyKey]
+        const oldVal = existing[existingKey]
+        // budget_usd is a numeric column (string mode) — normalize before comparing.
+        if (existingKey === 'budgetUsd') {
+          return Number(newVal ?? 0) !== (oldVal != null ? Number(oldVal) : null)
+        }
+        return newVal !== oldVal
+      })
+      .map(([bodyKey]) => bodyKey)
+
     if (changedKeys.length > 0) {
       await logAudit(admin, {
         bookingId: params.id, actorId: user.id, actorName,
@@ -147,17 +211,17 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   if (shouldEmailDriver && existing && assignedDriver) {
     try {
       await sendDriverAssignedEmail({
-        guestName: existing.guest_name as string,
-        guestEmail: existing.guest_email as string,
-        referenceNumber: existing.reference_number as string,
-        pickupLocation: existing.pickup_location as string,
-        dropoffLocation: existing.dropoff_location as string,
-        pickupDatetime: existing.pickup_datetime as string,
-        vehicleType: existing.vehicle_type as string,
-        driverName: assignedDriver.full_name,
+        guestName: existing.guestName ?? '',
+        guestEmail: existing.guestEmail ?? '',
+        referenceNumber: existing.referenceNumber,
+        pickupLocation: existing.pickupLocation ?? '',
+        dropoffLocation: existing.dropoffLocation ?? '',
+        pickupDatetime: existing.pickupDatetime ?? '',
+        vehicleType: existing.vehicleType,
+        driverName: assignedDriver.fullName,
         driverPhone: assignedDriver.phone,
-        vehiclePlate: (body.vehicle_plate ?? existing.vehicle_plate) as string | null,
-        vehicleModel: (body.vehicle_model ?? existing.vehicle_model) as string | null,
+        vehiclePlate: (body.vehicle_plate ?? existing.vehiclePlate) as string | null,
+        vehicleModel: (body.vehicle_model ?? existing.vehicleModel) as string | null,
       })
     } catch (err) {
       console.error('[driver-assign] email error:', err)
@@ -176,13 +240,15 @@ export async function DELETE(_: NextRequest, { params }: { params: { id: string 
   const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
   if (profile?.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  // Use service-role client to bypass RLS for cascade deletes
-  const admin = createAdminClient()
-  await admin.from('notifications').delete().eq('booking_id', params.id)
-  await admin.from('approvals').delete().eq('booking_id', params.id)
-  await admin.from('quotes').delete().eq('booking_id', params.id)
+  try {
+    await db.delete(schema.notifications).where(eq(schema.notifications.bookingId, params.id))
+    await db.delete(schema.approvals).where(eq(schema.approvals.bookingId, params.id))
+    await db.delete(schema.quotes).where(eq(schema.quotes.bookingId, params.id))
+    await db.delete(schema.bookings).where(eq(schema.bookings.id, params.id))
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to delete booking'
+    return NextResponse.json({ error: message }, { status: 400 })
+  }
 
-  const { error } = await admin.from('bookings').delete().eq('id', params.id)
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 })
   return NextResponse.json({ success: true })
 }
