@@ -941,7 +941,7 @@ export function BookingDetailModal({ open, onClose, booking, suppliers, drivers,
                   <span className="text-red-400/80">{entry.old_value ?? '—'}</span> to{' '}
                   <span className="text-emerald-400/80">{entry.new_value ?? '—'}</span>
                   <span className="text-slate-600">
-                    {' '}· {new Date(entry.created_at).toLocaleString()}
+                    {' '}· {new Date(entry.created_at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Manila' })}
                   </span>
                 </p>
               ))}

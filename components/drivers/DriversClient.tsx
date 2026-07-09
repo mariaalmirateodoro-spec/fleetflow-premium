@@ -550,7 +550,7 @@ export function DriversClient({ initialDrivers, suppliers, profile }: Props) {
                             return (
                               <span
                                 className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/15 text-amber-400"
-                                title={`On a trip until ${new Date(active.dropoff_datetime ?? active.pickup_datetime).toLocaleString()}`}
+                                title={`On a trip until ${new Date(active.dropoff_datetime ?? active.pickup_datetime).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Manila' })}`}
                               >
                                 🚗 On Trip
                               </span>

@@ -41,7 +41,11 @@ export function ReportsPageClient({ initialData, initialGeneratedAt, isLive }: P
         <p className="text-slate-500">
           {live
             ? 'No cached report yet — showing a live calculation. '
-            : `Cached report generated ${new Date(generatedAt).toLocaleString()}. `}
+            : `Cached report generated ${new Date(generatedAt).toLocaleString('en-US', {
+                dateStyle: 'medium',
+                timeStyle: 'short',
+                timeZone: 'Asia/Manila',
+              })}. `}
           {error && <span className="text-red-400 ml-1">{error}</span>}
         </p>
         <div className="flex items-center gap-2">
