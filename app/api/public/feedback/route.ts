@@ -1,18 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
-
-function createAdminClient() {
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { cookies: { getAll: () => [], setAll: () => {} } }
-  )
-}
+import { eq } from 'drizzle-orm'
+import { db, schema } from '@/lib/db'
 
 // Public endpoint — no auth required. Guests submit a 1–5 star rating (plus an
 // optional comment) for a completed trip, identified only by reference number
 // (same lookup pattern as /book/status/[reference]). Not required — this is a
 // nice-to-have link included in the trip completion receipt email.
+//
+// Talks directly to Postgres via Drizzle instead of PostgREST — this route
+// wasn't touched during the main is_draft-bug-driven migration (Phase 2)
+// since it didn't have that specific bug, migrated now as part of general
+// cleanup (Phase 4) for consistency.
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
@@ -27,15 +25,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Rating must be a whole number between 1 and 5.' }, { status: 400 })
     }
 
-    const admin = createAdminClient()
+    const [booking] = await db
+      .select({ id: schema.bookings.id, status: schema.bookings.status })
+      .from(schema.bookings)
+      .where(eq(schema.bookings.referenceNumber, reference_number.toUpperCase()))
+      .limit(1)
 
-    const { data: booking, error: bookingErr } = await admin
-      .from('bookings')
-      .select('id, status')
-      .eq('reference_number', reference_number.toUpperCase())
-      .maybeSingle()
-
-    if (bookingErr || !booking) {
+    if (!booking) {
       return NextResponse.json({ error: 'Booking not found.' }, { status: 404 })
     }
 
@@ -46,22 +42,21 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { error: upsertErr } = await admin
-      .from('feedback')
-      .upsert(
-        {
-          booking_id: booking.id,
-          reference_number: reference_number.toUpperCase(),
-          rating: ratingNum,
-          comment: typeof comment === 'string' && comment.trim() ? comment.trim() : null,
-        },
-        { onConflict: 'booking_id' }
-      )
+    const feedbackValues = {
+      bookingId: booking.id,
+      referenceNumber: reference_number.toUpperCase(),
+      rating: ratingNum,
+      comment: typeof comment === 'string' && comment.trim() ? comment.trim() : null,
+    }
 
-    if (upsertErr) return NextResponse.json({ error: upsertErr.message }, { status: 400 })
+    await db
+      .insert(schema.feedback)
+      .values(feedbackValues)
+      .onConflictDoUpdate({ target: schema.feedback.bookingId, set: feedbackValues })
 
     return NextResponse.json({ success: true })
-  } catch {
+  } catch (err) {
+    console.error('[public/feedback] error:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

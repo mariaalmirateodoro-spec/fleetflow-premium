@@ -228,7 +228,7 @@ Great news! Your transport booking has been confirmed. Here are your final detai
 • Pick-up: ${booking.pickup_location}
 • Drop-off: ${booking.dropoff_location}
 • Date & Time: ${pickupDate} at ${pickupTime}
-${selectedQuote.total_amount ? `• Total Cost: PHP ${selectedQuote.total_amount.toLocaleString()}` : ''}
+${selectedQuote.amount_usd ? `• Total Cost: PHP ${selectedQuote.amount_usd.toLocaleString()}` : ''}
 ${booking.special_requests ? `• Special Requests: ${booking.special_requests}` : ''}
 
 Please be at the pick-up location at least 5 minutes before your scheduled time. Your driver will be waiting for you.
@@ -317,7 +317,7 @@ Great news — your transport booking is confirmed! ✅
 📋 Ref: ${booking.reference_number}
 🚗 Vehicle: ${vehicleLabel}
 👥 Passengers: ${booking.guest_count} pax
-${tripDetails}${selectedQuote.total_amount ? `\n💰 Total: PHP ${selectedQuote.total_amount.toLocaleString()}` : ''}${booking.special_requests ? `\n📝 Special Requests: ${booking.special_requests}` : ''}${trackingLine}
+${tripDetails}${selectedQuote.amount_usd ? `\n💰 Total: PHP ${selectedQuote.amount_usd.toLocaleString()}` : ''}${booking.special_requests ? `\n📝 Special Requests: ${booking.special_requests}` : ''}${trackingLine}
 
 Please be at the pick-up point at least 5 minutes early. Your driver will be waiting. 🙏
 

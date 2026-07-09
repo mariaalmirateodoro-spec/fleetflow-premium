@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { eq } from 'drizzle-orm'
 import { createClient } from '@/lib/supabase/server'
 import { logAudit, adminClient } from '@/lib/audit'
+import { db, schema } from '@/lib/db'
 
+// Talks directly to Postgres via Drizzle instead of PostgREST — same
+// migration pass as approve/route.ts and the other booking-lifecycle routes.
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -24,15 +28,19 @@ export async function POST(
   }
 
   // Fetch booking
-  const { data: booking, error: bookingErr } = await supabase
-    .from('bookings')
-    .select('*')
-    .eq('id', params.id)
-    .single()
+  const [booking] = await db
+    .select()
+    .from(schema.bookings)
+    .where(eq(schema.bookings.id, params.id))
+    .limit(1)
 
-  if (bookingErr || !booking) {
+  if (!booking) {
     return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
   }
+
+  // Any authenticated staff member (per the role check above) can complete
+  // any booking (not restricted to the creator or admin/manager) — explicit
+  // product decision.
 
   if (booking.status !== 'approved') {
     return NextResponse.json(
@@ -42,17 +50,13 @@ export async function POST(
   }
 
   // Mark as completed
-  const { error: updateErr } = await supabase
-    .from('bookings')
-    .update({
+  await db
+    .update(schema.bookings)
+    .set({
       status: 'completed',
-      completed_at: new Date().toISOString(),
+      completedAt: new Date().toISOString(),
     })
-    .eq('id', params.id)
-
-  if (updateErr) {
-    return NextResponse.json({ error: updateErr.message }, { status: 400 })
-  }
+    .where(eq(schema.bookings.id, params.id))
 
   await logAudit(adminClient(), {
     bookingId: params.id,
@@ -65,13 +69,13 @@ export async function POST(
   })
 
   // In-app notification for booking creator
-  if (booking.created_by) {
-    await supabase.from('notifications').insert({
-      user_id: booking.created_by,
+  if (booking.createdBy) {
+    await db.insert(schema.notifications).values({
+      userId: booking.createdBy,
       type: 'system',
       title: 'Trip Completed',
-      message: `Booking ${booking.reference_number} has been marked as completed.`,
-      booking_id: params.id,
+      message: `Booking ${booking.referenceNumber} has been marked as completed.`,
+      bookingId: params.id,
     })
   }
 

@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { desc, ilike, or } from 'drizzle-orm'
 import { createClient } from '@/lib/supabase/server'
+import { db, schema } from '@/lib/db'
 
 // Staff-side "search a past guest" lookup — the equivalent of the
 // returning-guest autofill that already exists on the public /book page
 // (app/api/public/returning-guest), but for staff creating a booking on a
 // guest's behalf. No email-verification gate here since the caller is
 // already an authenticated staff member, not an anonymous guest.
+//
+// Talks directly to Postgres via Drizzle instead of PostgREST.
 export async function GET(request: NextRequest) {
   try {
     const supabase = createClient()
@@ -15,30 +19,52 @@ export async function GET(request: NextRequest) {
     const q = new URL(request.url).searchParams.get('q')?.trim() ?? ''
     if (q.length < 2) return NextResponse.json({ data: [] })
 
-    const { data, error } = await supabase
-      .from('bookings')
-      .select('guest_name, guest_nationality, guest_phone, guest_email, guest_line_id, vehicle_type, created_at')
-      .or(
-        `guest_name.ilike.%${q}%,guest_phone.ilike.%${q}%,guest_email.ilike.%${q}%,guest_line_id.ilike.%${q}%`
+    const like = `%${q}%`
+    const rows = await db
+      .select({
+        guestName: schema.bookings.guestName,
+        guestNationality: schema.bookings.guestNationality,
+        guestPhone: schema.bookings.guestPhone,
+        guestEmail: schema.bookings.guestEmail,
+        guestLineId: schema.bookings.guestLineId,
+        vehicleType: schema.bookings.vehicleType,
+        createdAt: schema.bookings.createdAt,
+      })
+      .from(schema.bookings)
+      .where(
+        or(
+          ilike(schema.bookings.guestName, like),
+          ilike(schema.bookings.guestPhone, like),
+          ilike(schema.bookings.guestEmail, like),
+          ilike(schema.bookings.guestLineId, like)
+        )
       )
-      .order('created_at', { ascending: false })
+      .orderBy(desc(schema.bookings.createdAt))
       .limit(30)
-
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
 
     // Dedupe to one row per guest (by email, falling back to phone), keeping
     // the most recent booking's details since that's the freshest info.
     const seen = new Set<string>()
-    const guests: typeof data = []
-    for (const row of data ?? []) {
-      const key = (row.guest_email || row.guest_phone || row.guest_name || '').toLowerCase()
+    const guests: typeof rows = []
+    for (const row of rows) {
+      const key = (row.guestEmail || row.guestPhone || row.guestName || '').toLowerCase()
       if (!key || seen.has(key)) continue
       seen.add(key)
       guests.push(row)
       if (guests.length >= 8) break
     }
 
-    return NextResponse.json({ data: guests })
+    const data = guests.map((row) => ({
+      guest_name: row.guestName,
+      guest_nationality: row.guestNationality,
+      guest_phone: row.guestPhone,
+      guest_email: row.guestEmail,
+      guest_line_id: row.guestLineId,
+      vehicle_type: row.vehicleType,
+      created_at: row.createdAt,
+    }))
+
+    return NextResponse.json({ data })
   } catch {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }

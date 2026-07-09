@@ -116,8 +116,8 @@ export function ApprovalsClient({ pendingBookings, recentApprovals, profile, sup
             {pendingBookings.map((booking) => {
               const isExpanded = expanded === booking.id
               const profiles = booking.profiles as { full_name?: string; email?: string } | undefined
-              const quotes = (booking as Booking & { quotes?: Array<{ total_amount: number; suppliers?: { company_name: string; rating: number } }> }).quotes ?? []
-              const cheapestQuote = quotes.length > 0 ? quotes.reduce((min, q) => q.total_amount < min.total_amount ? q : min, quotes[0]) : null
+              const quotes = (booking as Booking & { quotes?: Array<{ amount_usd: number; suppliers?: { company_name: string; rating: number } }> }).quotes ?? []
+              const cheapestQuote = quotes.length > 0 ? quotes.reduce((min, q) => q.amount_usd < min.amount_usd ? q : min, quotes[0]) : null
 
               return (
                 <div key={booking.id} className="card border border-white/10 hover:border-white/15 transition-all">
@@ -157,7 +157,7 @@ export function ApprovalsClient({ pendingBookings, recentApprovals, profile, sup
                           <p className="text-slate-500 mb-0.5">Budget / Best Quote</p>
                           <p className="text-slate-300">
                             {formatCurrency(booking.budget_usd)}
-                            {cheapestQuote && <span className="text-emerald-400 ml-1">({formatCurrency(cheapestQuote.total_amount)})</span>}
+                            {cheapestQuote && <span className="text-emerald-400 ml-1">({formatCurrency(cheapestQuote.amount_usd)})</span>}
                           </p>
                         </div>
                       </div>
@@ -239,7 +239,7 @@ export function ApprovalsClient({ pendingBookings, recentApprovals, profile, sup
                             {q.suppliers?.rating && <p className="text-[11px] text-amber-400">★ {q.suppliers.rating}</p>}
                           </div>
                           <div className="text-right">
-                            <p className="text-sm font-bold text-white">{formatCurrency(q.total_amount)}</p>
+                            <p className="text-sm font-bold text-white">{formatCurrency(q.amount_usd)}</p>
                             {i === 0 && <Badge variant="success" className="text-[10px]">Cheapest</Badge>}
                           </div>
                         </div>

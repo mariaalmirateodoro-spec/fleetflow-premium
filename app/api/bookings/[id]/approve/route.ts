@@ -1,17 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { eq } from 'drizzle-orm'
 import { createClient } from '@/lib/supabase/server'
-import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { sendBookingApprovedEmail, sendBookingRejectedEmail } from '@/lib/email'
-import { logAudit } from '@/lib/audit'
+import { logAudit, adminClient } from '@/lib/audit'
+import { db, schema } from '@/lib/db'
 
-function createAdminClient() {
-  return createSupabaseClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } }
-  )
-}
-
+// Approves/rejects/requests revision on a booking. Talks directly to
+// Postgres via Drizzle instead of PostgREST (part of the same migration as
+// the quotes routes in ../quotes/*). This route doesn't touch the
+// total_amount/amount_usd column-name bug itself, but was migrated in the
+// same pass since it's part of the approvals workflow.
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -47,13 +45,13 @@ export async function POST(
   }
 
   // Fetch full booking
-  const { data: booking, error: bookingErr } = await supabase
-    .from('bookings')
-    .select('*')
-    .eq('id', params.id)
-    .single()
+  const [booking] = await db
+    .select()
+    .from(schema.bookings)
+    .where(eq(schema.bookings.id, params.id))
+    .limit(1)
 
-  if (bookingErr || !booking) {
+  if (!booking) {
     return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
   }
 
@@ -71,39 +69,42 @@ export async function POST(
     action === 'rejected' ? 'cancelled' : 'pending'
 
   // Update booking
-  const bookingUpdate: Record<string, unknown> = {
+  const bookingUpdate: {
+    status: 'pending' | 'quoted' | 'approved' | 'completed' | 'cancelled'
+    approvedBy?: string
+    approvedAt?: string
+    assignedSupplier?: string
+    finalCostUsd?: string
+    cancelledAt?: string
+    cancellationReason?: string | null
+  } = {
     status: newStatus,
   }
   if (action === 'approved') {
-    bookingUpdate.approved_by = profile.id
-    bookingUpdate.approved_at = new Date().toISOString()
-    if (supplierId) bookingUpdate.assigned_supplier = supplierId
-    if (finalCost != null) bookingUpdate.final_cost_usd = finalCost
+    bookingUpdate.approvedBy = profile.id
+    bookingUpdate.approvedAt = new Date().toISOString()
+    if (supplierId) bookingUpdate.assignedSupplier = supplierId
+    if (finalCost != null) bookingUpdate.finalCostUsd = String(finalCost)
   }
   if (action === 'rejected') {
-    bookingUpdate.cancelled_at = new Date().toISOString()
-    bookingUpdate.cancellation_reason = comments ?? null
+    bookingUpdate.cancelledAt = new Date().toISOString()
+    bookingUpdate.cancellationReason = comments ?? null
   }
 
-  const admin = createAdminClient()
-  const { error: updateErr } = await admin
-    .from('bookings')
-    .update(bookingUpdate)
-    .eq('id', params.id)
-
-  if (updateErr) {
-    return NextResponse.json({ error: updateErr.message }, { status: 400 })
-  }
+  await db
+    .update(schema.bookings)
+    .set(bookingUpdate)
+    .where(eq(schema.bookings.id, params.id))
 
   // Insert approval record
-  await admin.from('approvals').insert({
-    booking_id: params.id,
-    reviewer_id: profile.id,
+  await db.insert(schema.approvals).values({
+    bookingId: params.id,
+    reviewerId: profile.id,
     action,
     comments: comments ?? null,
   })
 
-  await logAudit(admin, {
+  await logAudit(adminClient(), {
     bookingId: params.id,
     actorId: profile.id,
     actorName: profile.full_name || user.email || 'Unknown',
@@ -115,48 +116,48 @@ export async function POST(
   })
 
   // Insert in-app notification for booking creator
-  if (booking.created_by) {
+  if (booking.createdBy) {
     const notifTitle =
       action === 'approved' ? 'Booking Approved! ✅' :
       action === 'rejected' ? 'Booking Rejected' : 'Revision Requested'
     const notifMsg =
       action === 'approved'
-        ? `Booking ${booking.reference_number} has been approved.`
+        ? `Booking ${booking.referenceNumber} has been approved.`
         : action === 'rejected'
-        ? `Booking ${booking.reference_number} was rejected.${comments ? ' Reason: ' + comments : ''}`
-        : `Booking ${booking.reference_number} needs revision.${comments ? ' Notes: ' + comments : ''}`
+        ? `Booking ${booking.referenceNumber} was rejected.${comments ? ' Reason: ' + comments : ''}`
+        : `Booking ${booking.referenceNumber} needs revision.${comments ? ' Notes: ' + comments : ''}`
 
-    await admin.from('notifications').insert({
-      user_id: booking.created_by,
+    await db.insert(schema.notifications).values({
+      userId: booking.createdBy,
       type: action === 'approved' ? 'approved' : 'system',
       title: notifTitle,
       message: notifMsg,
-      booking_id: params.id,
+      bookingId: params.id,
     })
   }
 
   // Fetch supplier name (if assigned) for email
   let supplierName: string | undefined
   if (supplierId) {
-    const { data: supplier } = await supabase
-      .from('suppliers')
-      .select('company_name')
-      .eq('id', supplierId)
-      .single()
-    supplierName = supplier?.company_name
+    const [supplier] = await db
+      .select({ companyName: schema.suppliers.companyName })
+      .from(schema.suppliers)
+      .where(eq(schema.suppliers.id, supplierId))
+      .limit(1)
+    supplierName = supplier?.companyName
   }
 
   // Send guest email (only if guest email is on file)
-  if (booking.guest_email) {
+  if (booking.guestEmail) {
     try {
       const emailBase = {
-        guestName: booking.guest_name,
-        guestEmail: booking.guest_email,
-        referenceNumber: booking.reference_number,
-        pickupLocation: booking.pickup_location,
-        dropoffLocation: booking.dropoff_location,
-        pickupDatetime: booking.pickup_datetime,
-        vehicleType: booking.vehicle_type,
+        guestName: booking.guestName ?? '',
+        guestEmail: booking.guestEmail,
+        referenceNumber: booking.referenceNumber,
+        pickupLocation: booking.pickupLocation ?? '',
+        dropoffLocation: booking.dropoffLocation ?? '',
+        pickupDatetime: booking.pickupDatetime ?? '',
+        vehicleType: booking.vehicleType,
         comments: comments ?? null,
       }
 

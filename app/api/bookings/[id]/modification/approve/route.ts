@@ -1,16 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { eq } from 'drizzle-orm'
 import { createClient } from '@/lib/supabase/server'
-import { createClient as createSupabaseClient } from '@supabase/supabase-js'
-import { logAudit } from '@/lib/audit'
+import { logAudit, adminClient } from '@/lib/audit'
+import { db, schema } from '@/lib/db'
 
-function createAdminClient() {
-  return createSupabaseClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } }
-  )
-}
-
+// Talks directly to Postgres via Drizzle instead of PostgREST — same
+// migration pass as approve/route.ts and the other booking-lifecycle routes.
 export async function POST(
   _: NextRequest,
   { params }: { params: { id: string } }
@@ -30,64 +25,81 @@ export async function POST(
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  const admin = createAdminClient()
-
   // Fetch booking with modification data
-  const { data: booking, error: fetchError } = await admin
-    .from('bookings')
-    .select('id, guest_name, guest_email, reference_number, pickup_datetime, pickup_location, dropoff_location, vehicle_type, modification_status, modification_pickup_datetime, modification_pickup_location, modification_dropoff_location, modification_notes')
-    .eq('id', params.id)
-    .single()
+  const [booking] = await db
+    .select()
+    .from(schema.bookings)
+    .where(eq(schema.bookings.id, params.id))
+    .limit(1)
 
-  if (fetchError || !booking) {
+  if (!booking) {
     return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
   }
 
-  if (booking.modification_status !== 'pending') {
+  // Any authenticated staff member (per the role check above) can act on
+  // any booking's modification request (not restricted to the creator or
+  // admin/manager) — explicit product decision.
+
+  if (booking.modificationStatus !== 'pending') {
     return NextResponse.json({ error: 'No pending modification request' }, { status: 400 })
   }
 
   const now = new Date().toISOString()
 
   // Apply the requested changes and clear modification fields
-  const updates: Record<string, unknown> = {
-    modification_status: 'approved',
-    modification_pickup_datetime: null,
-    modification_pickup_location: null,
-    modification_dropoff_location: null,
-    modification_notes: null,
-    modification_requested_at: null,
-    updated_at: now,
+  const updates: {
+    modificationStatus: string
+    modificationPickupDatetime: null
+    modificationPickupLocation: null
+    modificationDropoffLocation: null
+    modificationNotes: null
+    modificationRequestedAt: null
+    updatedAt: string
+    pickupDatetime?: string
+    pickupLocation?: string
+    dropoffLocation?: string
+  } = {
+    modificationStatus: 'approved',
+    modificationPickupDatetime: null,
+    modificationPickupLocation: null,
+    modificationDropoffLocation: null,
+    modificationNotes: null,
+    modificationRequestedAt: null,
+    updatedAt: now,
   }
 
-  if (booking.modification_pickup_datetime) {
-    updates.pickup_datetime = booking.modification_pickup_datetime
+  if (booking.modificationPickupDatetime) {
+    updates.pickupDatetime = booking.modificationPickupDatetime
   }
-  if (booking.modification_pickup_location) {
-    updates.pickup_location = booking.modification_pickup_location
+  if (booking.modificationPickupLocation) {
+    updates.pickupLocation = booking.modificationPickupLocation
   }
-  if (booking.modification_dropoff_location) {
-    updates.dropoff_location = booking.modification_dropoff_location
-  }
-
-  const { data: updated, error: updateError } = await admin
-    .from('bookings')
-    .update(updates)
-    .eq('id', params.id)
-    .select()
-    .single()
-
-  if (updateError) {
-    return NextResponse.json({ error: updateError.message }, { status: 500 })
+  if (booking.modificationDropoffLocation) {
+    updates.dropoffLocation = booking.modificationDropoffLocation
   }
 
-  await logAudit(admin, {
+  const [updated] = await db
+    .update(schema.bookings)
+    .set(updates)
+    .where(eq(schema.bookings.id, params.id))
+    .returning()
+
+  await logAudit(adminClient(), {
     bookingId: params.id,
     actorId: user.id,
     actorName: profile?.full_name || user.email || 'Unknown',
     action: 'modification_approved',
-    note: booking.modification_notes ?? null,
+    note: booking.modificationNotes ?? null,
   })
 
-  return NextResponse.json({ success: true, data: updated })
+  const data = {
+    id: updated.id,
+    reference_number: updated.referenceNumber,
+    pickup_datetime: updated.pickupDatetime,
+    pickup_location: updated.pickupLocation,
+    dropoff_location: updated.dropoffLocation,
+    modification_status: updated.modificationStatus,
+  }
+
+  return NextResponse.json({ success: true, data })
 }

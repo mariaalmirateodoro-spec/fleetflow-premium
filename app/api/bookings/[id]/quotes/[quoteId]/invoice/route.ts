@@ -1,19 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { eq } from 'drizzle-orm'
 import { createClient } from '@/lib/supabase/server'
-import { createClient as createSupabaseClient } from '@supabase/supabase-js'
-import { logAudit } from '@/lib/audit'
+import { logAudit, adminClient } from '@/lib/audit'
+import { db, schema } from '@/lib/db'
 
-function createAdminClient() {
-  return createSupabaseClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } }
-  )
-}
+// adminClient() (from lib/audit.ts) is only used below for Supabase Storage
+// (signed URLs) — a separate service from the database/PostgREST, not
+// something Drizzle has any concept of, so it stays on supabase-js.
 
 // Called after the browser has already uploaded the file straight to
 // Supabase Storage (bucket: supplier-invoices). This just records which
-// storage path belongs to which quote, and logs it.
+// storage path belongs to which quote, and logs it. The DB update/select
+// here now goes through Drizzle instead of PostgREST — also fixes the same
+// total_amount -> amount_usd column-name bug described in ../route.ts
+// (this handler used to select `total_amount`, which isn't a real column,
+// so uploading an invoice would have failed every time).
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string; quoteId: string } }
@@ -30,23 +31,26 @@ export async function POST(
   const { path } = await request.json() as { path: string }
   if (!path) return NextResponse.json({ error: 'Missing file path' }, { status: 400 })
 
-  const admin = createAdminClient()
-  const { data: quote, error } = await admin
-    .from('quotes')
-    .update({ invoice_path: path })
-    .eq('id', params.quoteId)
-    .select('supplier_id, total_amount')
-    .single()
+  const [quote] = await db
+    .update(schema.quotes)
+    .set({ invoicePath: path })
+    .where(eq(schema.quotes.id, params.quoteId))
+    .returning({ supplierId: schema.quotes.supplierId, amountUsd: schema.quotes.amountUsd })
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+  if (!quote) return NextResponse.json({ error: 'Quote not found' }, { status: 404 })
 
-  const { data: supplier } = await admin.from('suppliers').select('company_name').eq('id', quote.supplier_id).single()
-  await logAudit(admin, {
+  const [supplier] = await db
+    .select({ companyName: schema.suppliers.companyName })
+    .from(schema.suppliers)
+    .where(eq(schema.suppliers.id, quote.supplierId))
+    .limit(1)
+
+  await logAudit(adminClient(), {
     bookingId: params.id,
     actorId: user.id,
     actorName: profile.full_name || user.email || 'Unknown',
     action: 'invoice_uploaded',
-    note: `Uploaded invoice from ${supplier?.company_name ?? 'supplier'} (quoted ${quote.total_amount})`,
+    note: `Uploaded invoice from ${supplier?.companyName ?? 'supplier'} (quoted ${quote.amountUsd})`,
   })
 
   return NextResponse.json({ success: true })
@@ -62,13 +66,17 @@ export async function GET(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const admin = createAdminClient()
-  const { data: quote } = await admin.from('quotes').select('invoice_path').eq('id', params.quoteId).single()
-  if (!quote?.invoice_path) return NextResponse.json({ error: 'No invoice on file' }, { status: 404 })
+  const [quote] = await db
+    .select({ invoicePath: schema.quotes.invoicePath })
+    .from(schema.quotes)
+    .where(eq(schema.quotes.id, params.quoteId))
+    .limit(1)
+  if (!quote?.invoicePath) return NextResponse.json({ error: 'No invoice on file' }, { status: 404 })
 
+  const admin = adminClient()
   const { data, error } = await admin.storage
     .from('supplier-invoices')
-    .createSignedUrl(quote.invoice_path, 60)
+    .createSignedUrl(quote.invoicePath, 60)
 
   if (error || !data) return NextResponse.json({ error: error?.message ?? 'Failed to create link' }, { status: 400 })
   return NextResponse.json({ url: data.signedUrl })

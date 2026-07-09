@@ -1,79 +1,41 @@
 // ============================================================
 // FleetFlow Premium – Notification System
-// Creates in-app notifications + optional email via Resend
 // ============================================================
 
-import { createClient } from '@/lib/supabase/server'
+import { inArray, and, eq } from 'drizzle-orm'
+import { db, schema } from '@/lib/db'
 import type { NotificationType } from '@/types'
 
-interface CreateNotificationInput {
-  userId: string
-  type: NotificationType
-  title: string
-  message: string
-  bookingId?: string
-}
-
-export async function createNotification(input: CreateNotificationInput) {
-  const supabase = createClient()
-
-  const { error } = await supabase
-    .from('notifications')
-    .insert({
-      user_id: input.userId,
-      type: input.type,
-      title: input.title,
-      message: input.message,
-      booking_id: input.bookingId ?? null,
-    })
-
-  if (error) {
-    console.error('[notifications] Failed to create notification:', error)
-  }
-}
-
+// Talks directly to Postgres via Drizzle instead of PostgREST. This used to
+// go through the session-bound Supabase client (the logged-in staff
+// member's own 'authenticated' role) — but a security patch
+// (supabase/patch_lockdown_rls.sql) locked the notifications table's INSERT
+// policy down to "server only" (WITH CHECK (false)), which blocks that role
+// entirely. Since that patch, every call to notifyManagers() has been
+// silently failing (the insert's error was never checked) — meaning
+// managers/admins stopped getting "New Transport Request" notifications
+// when staff created bookings. Drizzle bypasses RLS the same way the old
+// service-role client did, so this fixes it. Unrelated to the direct-
+// Postgres migration itself, just surfaced while touching this file.
 export async function notifyManagers(
   title: string,
   message: string,
   bookingId?: string
 ) {
-  const supabase = createClient()
+  const managers = await db
+    .select({ id: schema.profiles.id })
+    .from(schema.profiles)
+    .where(and(inArray(schema.profiles.role, ['manager', 'admin']), eq(schema.profiles.isActive, true)))
 
-  const { data: managers } = await supabase
-    .from('profiles')
-    .select('id')
-    .in('role', ['manager', 'admin'])
-    .eq('is_active', true)
+  if (managers.length === 0) return
 
-  if (!managers) return
-
-  const notifications = managers.map((m) => ({
-    user_id: m.id,
-    type: 'approval_needed' as NotificationType,
-    title,
-    message,
-    booking_id: bookingId ?? null,
-  }))
-
-  await supabase.from('notifications').insert(notifications)
-}
-
-export async function markNotificationRead(notificationId: string, userId: string) {
-  const supabase = createClient()
-
-  await supabase
-    .from('notifications')
-    .update({ is_read: true })
-    .eq('id', notificationId)
-    .eq('user_id', userId)
-}
-
-export async function markAllNotificationsRead(userId: string) {
-  const supabase = createClient()
-
-  await supabase
-    .from('notifications')
-    .update({ is_read: true })
-    .eq('user_id', userId)
-    .eq('is_read', false)
+  await db.insert(schema.notifications).values(
+    managers.map((m) => ({
+      userId: m.id,
+      type: 'approval_needed' as NotificationType,
+      title,
+      message,
+      bookingId: bookingId ?? null,
+    }))
+  )
 }

@@ -44,13 +44,13 @@ export function ReportsContent({ monthlyData, topSuppliers, savingsData, frequen
 
     // ── Summary ──────────────────────────────────────────────
     lines.push('SUMMARY')
-    lines.push(buildRow(['Total Spend (USD)', 'Total Savings (USD)', 'Completed Bookings', 'Cancelled Bookings', 'Total Bookings']))
+    lines.push(buildRow(['Total Spend (PHP)', 'Total Savings (PHP)', 'Completed Bookings', 'Cancelled Bookings', 'Total Bookings']))
     lines.push(buildRow([summary.totalSpend, summary.totalSavings, summary.completedCount, summary.cancelledCount, summary.totalBookings]))
     lines.push('')
 
     // ── Monthly breakdown ─────────────────────────────────────
     lines.push('MONTHLY BREAKDOWN')
-    lines.push(buildRow(['Month', 'Bookings', 'Spend (USD)']))
+    lines.push(buildRow(['Month', 'Bookings', 'Spend (PHP)']))
     monthlyData.forEach((m) => lines.push(buildRow([m.month, m.bookings, m.spend])))
     lines.push('')
 
@@ -62,7 +62,7 @@ export function ReportsContent({ monthlyData, topSuppliers, savingsData, frequen
 
     // ── Supplier performance ──────────────────────────────────
     lines.push('SUPPLIER PERFORMANCE')
-    lines.push(buildRow(['Supplier', 'Bookings', 'Revenue (USD)', 'Avg per Booking (USD)', 'Rating']))
+    lines.push(buildRow(['Supplier', 'Bookings', 'Revenue (PHP)', 'Avg per Booking (PHP)', 'Rating']))
     topSuppliers.forEach((s) =>
       lines.push(buildRow([s.name, s.bookings, s.revenue, s.bookings > 0 ? (s.revenue / s.bookings).toFixed(2) : 0, s.rating.toFixed(1)]))
     )
@@ -76,13 +76,13 @@ export function ReportsContent({ monthlyData, topSuppliers, savingsData, frequen
 
     // ── Cost savings ──────────────────────────────────────────
     lines.push('COST SAVINGS BY BOOKING')
-    lines.push(buildRow(['Reference', 'Budget (USD)', 'Actual Cost (USD)', 'Savings (USD)']))
+    lines.push(buildRow(['Reference', 'Budget (PHP)', 'Actual Cost (PHP)', 'Savings (PHP)']))
     savingsData.forEach((r) => lines.push(buildRow([r.reference_number, r.budget, r.actual, r.savings])))
     lines.push('')
 
     // ── Driver utilization ────────────────────────────────────────
     lines.push('DRIVER UTILIZATION')
-    lines.push(buildRow(['Driver', 'Trips', 'Revenue (USD)', 'Avg per Trip (USD)']))
+    lines.push(buildRow(['Driver', 'Trips', 'Revenue (PHP)', 'Avg per Trip (PHP)']))
     driverStats.forEach((d) =>
       lines.push(buildRow([d.name, d.trips, d.revenue, d.trips > 0 ? (d.revenue / d.trips).toFixed(2) : 0]))
     )
@@ -109,7 +109,7 @@ export function ReportsContent({ monthlyData, topSuppliers, savingsData, frequen
     <div className="space-y-6 animate-fade-in">
       {/* Header row */}
       <div className="flex items-center justify-between">
-        <p className="text-xs text-slate-500">All figures in USD unless noted.</p>
+        <p className="text-xs text-slate-500">All figures in PHP unless noted.</p>
         <button onClick={exportCSV} className="btn-secondary flex items-center gap-2 text-xs">
           <Download className="w-3.5 h-3.5" />
           Export CSV

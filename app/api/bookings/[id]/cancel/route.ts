@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { eq } from 'drizzle-orm'
 import { createClient } from '@/lib/supabase/server'
 import { sendBookingCancelledEmail } from '@/lib/email'
 import { logAudit, adminClient } from '@/lib/audit'
+import { db, schema } from '@/lib/db'
 
+// Talks directly to Postgres via Drizzle instead of PostgREST — same
+// migration pass as approve/route.ts and the other booking-lifecycle routes.
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -32,15 +36,19 @@ export async function POST(
   }
 
   // Fetch the booking
-  const { data: booking, error: bookingErr } = await supabase
-    .from('bookings')
-    .select('*')
-    .eq('id', params.id)
-    .single()
+  const [booking] = await db
+    .select()
+    .from(schema.bookings)
+    .where(eq(schema.bookings.id, params.id))
+    .limit(1)
 
-  if (bookingErr || !booking) {
+  if (!booking) {
     return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
   }
+
+  // Any authenticated staff member (per the role check above) can cancel
+  // any booking (not restricted to the creator or admin/manager) — explicit
+  // product decision.
 
   // Prevent cancelling already-cancelled or completed bookings
   if (booking.status === 'cancelled') {
@@ -51,18 +59,14 @@ export async function POST(
   }
 
   // Cancel the booking
-  const { error: updateErr } = await supabase
-    .from('bookings')
-    .update({
+  await db
+    .update(schema.bookings)
+    .set({
       status: 'cancelled',
-      cancellation_reason: reason.trim(),
-      cancelled_at: new Date().toISOString(),
+      cancellationReason: reason.trim(),
+      cancelledAt: new Date().toISOString(),
     })
-    .eq('id', params.id)
-
-  if (updateErr) {
-    return NextResponse.json({ error: updateErr.message }, { status: 400 })
-  }
+    .where(eq(schema.bookings.id, params.id))
 
   await logAudit(adminClient(), {
     bookingId: params.id,
@@ -76,26 +80,26 @@ export async function POST(
   })
 
   // In-app notification for booking creator
-  if (booking.created_by) {
-    await supabase.from('notifications').insert({
-      user_id: booking.created_by,
+  if (booking.createdBy) {
+    await db.insert(schema.notifications).values({
+      userId: booking.createdBy,
       type: 'system',
       title: 'Booking Cancelled',
-      message: `Booking ${booking.reference_number} was cancelled. Reason: ${reason.trim()}`,
-      booking_id: params.id,
+      message: `Booking ${booking.referenceNumber} was cancelled. Reason: ${reason.trim()}`,
+      bookingId: params.id,
     })
   }
 
   // Send cancellation email to guest
-  if (booking.guest_email) {
+  if (booking.guestEmail) {
     try {
       await sendBookingCancelledEmail({
-        guestName: booking.guest_name,
-        guestEmail: booking.guest_email,
-        referenceNumber: booking.reference_number,
-        pickupLocation: booking.pickup_location,
-        dropoffLocation: booking.dropoff_location,
-        pickupDatetime: booking.pickup_datetime,
+        guestName: booking.guestName ?? '',
+        guestEmail: booking.guestEmail,
+        referenceNumber: booking.referenceNumber,
+        pickupLocation: booking.pickupLocation ?? '',
+        dropoffLocation: booking.dropoffLocation ?? '',
+        pickupDatetime: booking.pickupDatetime ?? '',
         cancellationReason: reason.trim(),
       })
     } catch (err) {
