@@ -109,18 +109,24 @@ export async function PATCH(
       }
 
       if (updated.guestEmail) {
-        sendBookingConfirmationEmail({
-          guestName: updated.guestName ?? '',
-          guestEmail: updated.guestEmail,
-          referenceNumber: updated.referenceNumber,
-          pickupLocation: updated.pickupLocation ?? '',
-          dropoffLocation: updated.dropoffLocation ?? '',
-          pickupDatetime: updated.pickupDatetime ?? '',
-          dropoffDatetime: updated.dropoffDatetime ?? null,
-          vehicleType: updated.vehicleType ?? '',
-          guestCount: updated.guestCount ?? 1,
-          specialRequests: updated.specialRequests ?? null,
-        }).catch((err) => console.error('[email] confirmation failed:', err))
+        // Awaited (not fire-and-forget) — see note in
+        // app/api/public/bookings/route.ts for why.
+        try {
+          await sendBookingConfirmationEmail({
+            guestName: updated.guestName ?? '',
+            guestEmail: updated.guestEmail,
+            referenceNumber: updated.referenceNumber,
+            pickupLocation: updated.pickupLocation ?? '',
+            dropoffLocation: updated.dropoffLocation ?? '',
+            pickupDatetime: updated.pickupDatetime ?? '',
+            dropoffDatetime: updated.dropoffDatetime ?? null,
+            vehicleType: updated.vehicleType ?? '',
+            guestCount: updated.guestCount ?? 1,
+            specialRequests: updated.specialRequests ?? null,
+          })
+        } catch (err) {
+          console.error('[email] confirmation failed:', err)
+        }
       }
     }
 
