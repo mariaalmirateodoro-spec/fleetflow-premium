@@ -83,6 +83,14 @@ export async function PATCH(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  // Admin/manager only — matches the old RLS policy ("Admins and managers
+  // can update suppliers"), which silently blocked plain staff at the
+  // database level before this route talked directly to Postgres.
+  const { data: profile } = await supabase.from('profiles').select('role, full_name').eq('id', user.id).single()
+  if (!['admin', 'manager'].includes(profile?.role ?? '')) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
   const { id, ...body } = await request.json()
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
 
@@ -111,7 +119,6 @@ export async function PATCH(request: NextRequest) {
 
   if (!updated) return NextResponse.json({ error: 'Supplier not found' }, { status: 404 })
 
-  const { data: profile } = await supabase.from('profiles').select('full_name').eq('id', user.id).single()
   const actorName = profile?.full_name || user.email || 'Unknown'
   const admin = adminClient()
 

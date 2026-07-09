@@ -27,13 +27,21 @@ export async function POST(
 
   // Fetch booking
   const [booking] = await db
-    .select({ modificationStatus: schema.bookings.modificationStatus })
+    .select({ modificationStatus: schema.bookings.modificationStatus, createdBy: schema.bookings.createdBy })
     .from(schema.bookings)
     .where(eq(schema.bookings.id, params.id))
     .limit(1)
 
   if (!booking) {
     return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
+  }
+
+  // Only the booking's creator, or an admin/manager, can act on it — matches
+  // the old RLS policy ("Staff can update own bookings; admins/managers can
+  // update any"), which silently blocked everyone else at the database
+  // level before this route talked directly to Postgres.
+  if (booking.createdBy !== user.id && !['admin', 'manager'].includes(profile?.role ?? '')) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
   if (booking.modificationStatus !== 'pending') {

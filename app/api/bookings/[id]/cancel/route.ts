@@ -46,6 +46,14 @@ export async function POST(
     return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
   }
 
+  // Only the booking's creator, or an admin/manager, can cancel it — matches
+  // the old RLS policy ("Staff can update own bookings; admins/managers can
+  // update any"), which silently blocked everyone else at the database
+  // level before this route talked directly to Postgres.
+  if (booking.createdBy !== user.id && !['admin', 'manager'].includes(profile.role)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
   // Prevent cancelling already-cancelled or completed bookings
   if (booking.status === 'cancelled') {
     return NextResponse.json({ error: 'Booking is already cancelled' }, { status: 400 })

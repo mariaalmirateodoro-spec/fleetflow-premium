@@ -155,6 +155,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   // so the catch-all diff below only reports fields that actually changed.
   const [existing] = await db
     .select({
+      createdBy: schema.bookings.createdBy,
       driverId: schema.bookings.driverId,
       finalCostUsd: schema.bookings.finalCostUsd,
       guestEmail: schema.bookings.guestEmail,
@@ -179,6 +180,16 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     .from(schema.bookings)
     .where(eq(schema.bookings.id, params.id))
     .limit(1)
+
+  if (!existing) return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
+
+  // Only the booking's creator, or an admin/manager, can edit it — matches
+  // the old RLS policy ("Staff can update own bookings; admins/managers can
+  // update any"), which silently blocked everyone else at the database
+  // level before this route talked directly to Postgres.
+  if (existing.createdBy !== user.id && !['admin', 'manager'].includes(profile?.role ?? '')) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
   // If a driver is being assigned, check whether it's a new/changed assignment
   let shouldEmailDriver = false
