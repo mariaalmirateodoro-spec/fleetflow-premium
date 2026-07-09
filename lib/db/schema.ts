@@ -11,6 +11,7 @@ import {
   date,
   jsonb,
 } from 'drizzle-orm/pg-core'
+import { sql } from 'drizzle-orm'
 
 // ============================================================
 // FleetFlow Premium — Drizzle schema
@@ -29,6 +30,12 @@ import {
 // files describe (some columns were relaxed/added slightly differently than
 // documented, e.g. several bookings NOT NULL constraints were dropped later
 // for draft support).
+//
+// All timestamp/date columns use `{ mode: 'string' }` — Drizzle's default
+// mode returns JS Date objects, but the rest of this codebase (API request
+// bodies, forms, email templates) has always passed timestamps around as
+// plain ISO strings the way supabase-js did. Keeping strings avoids Date
+// object conversions scattered through every route this schema touches.
 //
 // ⚠️ Do NOT run `drizzle-kit push` or `drizzle-kit generate` against this
 // file without carefully reviewing the diff first. This schema exists
@@ -53,17 +60,20 @@ export const userRoleEnum = pgEnum('user_role', ['admin', 'staff', 'manager', 'f
 export const bookingStatusEnum = pgEnum('booking_status', ['pending', 'quoted', 'approved', 'completed', 'cancelled'])
 export const vehicleTypeEnum = pgEnum('vehicle_type', ['sedan', 'suv', 'van', 'minibus', 'luxury', 'pickup'])
 export const approvalActionEnum = pgEnum('approval_action', ['approved', 'rejected', 'revision_requested'])
-// NOTE: app code inserts notifications with type 'new_booking' in two places
-// (app/api/public/bookings/route.ts, app/api/public/bookings/[reference]/route.ts)
-// but 'new_booking' has never actually been a valid value of this enum in
-// the live database — confirmed via pg_enum on 2026-07-09. Those inserts
-// have been silently failing in production ever since (supabase-js doesn't
-// throw on DB errors unless the caller checks `.error`, and neither call
-// site does). Flagged to Tiffany; deliberately not fixed here since it's a
-// pre-existing bug unrelated to this PostgREST-bypass migration. Fix is a
-// one-line `ALTER TYPE notification_type ADD VALUE 'new_booking';` whenever
-// she wants it applied — after that, add 'new_booking' to this list too.
-export const notificationTypeEnum = pgEnum('notification_type', ['new_request', 'approval_needed', 'approved', 'payment_due', 'system'])
+// 'new_booking' added 2026-07-09 via `ALTER TYPE notification_type ADD VALUE
+// 'new_booking';` — app code had been inserting notifications with this type
+// in two places (guest booking creation, draft finalize) since it was
+// written, but it was never actually a valid enum value in the live
+// database, so those inserts had been silently failing in production the
+// whole time (supabase-js doesn't throw on DB errors unless the caller
+// checks `.error`, and neither call site did). Fixed as part of moving
+// those routes onto this schema, since the old code would otherwise still
+// silently swallow the failure — Drizzle's typed insert would either reject
+// the literal at compile time (if left out of this list) or hit a live
+// Postgres "invalid input value for enum" error at runtime (if forced in
+// without the ALTER TYPE), so fixing the underlying enum was the correct
+// call rather than encoding the bug into the new code too.
+export const notificationTypeEnum = pgEnum('notification_type', ['new_request', 'approval_needed', 'approved', 'payment_due', 'system', 'new_booking'])
 
 // ─────────────────────────────────────────────────────────────
 // PROFILES (extends Supabase auth.users — id is that table's PK)
@@ -77,9 +87,9 @@ export const profiles = pgTable('profiles', {
   department: text('department'),
   phone: text('phone'),
   isActive: boolean('is_active').notNull().default(true),
-  lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  lastLoginAt: timestamp('last_login_at', { withTimezone: true, mode: 'string' }),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).notNull().defaultNow(),
 })
 
 // ─────────────────────────────────────────────────────────────
@@ -100,8 +110,8 @@ export const suppliers = pgTable('suppliers', {
   isPreferred: boolean('is_preferred').notNull().default(false),
   notes: text('notes'),
   createdBy: uuid('created_by'),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).notNull().defaultNow(),
 })
 
 // ─────────────────────────────────────────────────────────────
@@ -112,14 +122,14 @@ export const drivers = pgTable('drivers', {
   fullName: text('full_name').notNull(),
   phone: text('phone').notNull(),
   licenseNumber: text('license_number').notNull(),
-  licenseExpiry: date('license_expiry'),
+  licenseExpiry: date('license_expiry', { mode: 'string' }),
   vehicleTypes: vehicleTypeEnum('vehicle_types').array().notNull().default([]),
   isAvailable: boolean('is_available').notNull().default(true),
   assignedSupplierId: uuid('assigned_supplier_id'),
   notes: text('notes'),
   createdBy: uuid('created_by'),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).notNull().defaultNow(),
 })
 
 // ─────────────────────────────────────────────────────────────
@@ -127,12 +137,16 @@ export const drivers = pgTable('drivers', {
 // ─────────────────────────────────────────────────────────────
 export const bookings = pgTable('bookings', {
   id: uuid('id').primaryKey().defaultRandom(),
-  referenceNumber: text('reference_number').notNull(),
+  // DB-level default generates this (e.g. "FF-A1B2C3D4") when omitted from
+  // an insert — matches the live column default exactly so Drizzle knows
+  // this field is optional on insert instead of requiring app code to
+  // generate it.
+  referenceNumber: text('reference_number').notNull().default(sql`('FF-'::text || upper(substr(md5((random())::text), 1, 8)))`),
   guestName: text('guest_name'),
   guestNationality: text('guest_nationality'),
   guestCount: integer('guest_count').notNull().default(1),
-  pickupDatetime: timestamp('pickup_datetime', { withTimezone: true }),
-  dropoffDatetime: timestamp('dropoff_datetime', { withTimezone: true }),
+  pickupDatetime: timestamp('pickup_datetime', { withTimezone: true, mode: 'string' }),
+  dropoffDatetime: timestamp('dropoff_datetime', { withTimezone: true, mode: 'string' }),
   pickupLocation: text('pickup_location'),
   dropoffLocation: text('dropoff_location'),
   vehicleType: vehicleTypeEnum('vehicle_type').notNull().default('sedan'),
@@ -145,12 +159,12 @@ export const bookings = pgTable('bookings', {
   assignedSupplier: uuid('assigned_supplier'),
   createdBy: uuid('created_by'),
   approvedBy: uuid('approved_by'),
-  approvedAt: timestamp('approved_at', { withTimezone: true }),
-  completedAt: timestamp('completed_at', { withTimezone: true }),
-  cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
+  approvedAt: timestamp('approved_at', { withTimezone: true, mode: 'string' }),
+  completedAt: timestamp('completed_at', { withTimezone: true, mode: 'string' }),
+  cancelledAt: timestamp('cancelled_at', { withTimezone: true, mode: 'string' }),
   cancellationReason: text('cancellation_reason'),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).notNull().defaultNow(),
   guestEmail: text('guest_email'),
   guestPhone: text('guest_phone'),
   guestLineId: text('guest_line_id'),
@@ -158,11 +172,11 @@ export const bookings = pgTable('bookings', {
   vehiclePlate: text('vehicle_plate'),
   vehicleModel: text('vehicle_model'),
   modificationStatus: text('modification_status'),
-  modificationPickupDatetime: timestamp('modification_pickup_datetime', { withTimezone: true }),
+  modificationPickupDatetime: timestamp('modification_pickup_datetime', { withTimezone: true, mode: 'string' }),
   modificationPickupLocation: text('modification_pickup_location'),
   modificationDropoffLocation: text('modification_dropoff_location'),
   modificationNotes: text('modification_notes'),
-  modificationRequestedAt: timestamp('modification_requested_at', { withTimezone: true }),
+  modificationRequestedAt: timestamp('modification_requested_at', { withTimezone: true, mode: 'string' }),
   isDraft: boolean('is_draft').notNull().default(false),
 })
 
@@ -177,11 +191,11 @@ export const quotes = pgTable('quotes', {
   includesDriver: boolean('includes_driver').notNull().default(false),
   vehicleModel: text('vehicle_model'),
   estimatedDurationHours: numeric('estimated_duration_hours', { precision: 5, scale: 2 }),
-  validUntil: timestamp('valid_until', { withTimezone: true }),
+  validUntil: timestamp('valid_until', { withTimezone: true, mode: 'string' }),
   notes: text('notes'),
   isSelected: boolean('is_selected').notNull().default(false),
   createdBy: uuid('created_by'),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull().defaultNow(),
   invoicePath: text('invoice_path'),
 })
 
@@ -195,7 +209,7 @@ export const approvals = pgTable('approvals', {
   action: approvalActionEnum('action').notNull(),
   comments: text('comments'),
   revisionNotes: text('revision_notes'),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull().defaultNow(),
 })
 
 // ─────────────────────────────────────────────────────────────
@@ -209,7 +223,7 @@ export const notifications = pgTable('notifications', {
   message: text('message').notNull(),
   bookingId: uuid('booking_id'),
   isRead: boolean('is_read').notNull().default(false),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull().defaultNow(),
 })
 
 // ─────────────────────────────────────────────────────────────
@@ -219,8 +233,8 @@ export const reportsCache = pgTable('reports_cache', {
   id: uuid('id').primaryKey().defaultRandom(),
   reportKey: text('report_key').notNull(),
   data: jsonb('data').notNull(),
-  generatedAt: timestamp('generated_at', { withTimezone: true }).notNull().defaultNow(),
-  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  generatedAt: timestamp('generated_at', { withTimezone: true, mode: 'string' }).notNull().defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'string' }).notNull(),
 })
 
 // ─────────────────────────────────────────────────────────────
@@ -235,7 +249,7 @@ export const auditLog = pgTable('audit_log', {
   field: text('field'),
   oldValue: text('old_value'),
   newValue: text('new_value'),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull().defaultNow(),
   note: text('note'),
 })
 
@@ -248,5 +262,5 @@ export const feedback = pgTable('feedback', {
   referenceNumber: text('reference_number').notNull(),
   rating: smallint('rating').notNull(),
   comment: text('comment'),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull().defaultNow(),
 })

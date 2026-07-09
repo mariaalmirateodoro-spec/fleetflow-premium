@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
+import { inArray } from 'drizzle-orm'
+import { db, schema } from '@/lib/db'
 import { sendBookingConfirmationEmail, sendDraftSavedEmail } from '@/lib/email'
 
 // ─── Simple in-memory rate limiter ───────────────────────────
@@ -35,8 +36,16 @@ function checkRateLimit(ip: string): { allowed: boolean; retryAfterSeconds: numb
   return { allowed: true, retryAfterSeconds: 0 }
 }
 
-// Public endpoint — no auth required. Uses anon key + RLS policy that allows
-// inserts where created_by IS NULL (guest bookings).
+// Public endpoint — no auth required. Talks directly to Postgres via Drizzle
+// (see lib/db) instead of going through Supabase's PostgREST layer, which
+// repeatedly lost track of columns/tables/functions that provably existed in
+// the database (ticket SU-415685) — most critically, this exact route's
+// is_draft column, which at one point was blocking every guest booking
+// submission outright. The RPC-function workarounds layered on top of
+// PostgREST to survive that bug (fleetflow_create_draft_booking etc.) are no
+// longer needed now that this route bypasses PostgREST entirely — this
+// route's own server-side validation below (required fields, rate limiting)
+// takes the place of RLS for access control, same as before.
 export async function POST(request: NextRequest) {
   try {
     // Rate limit check
@@ -52,29 +61,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Service-role client for the insert itself, plus sending notifications
-    // (bypasses RLS). The insert used to go through the anon-key client,
-    // relying on the "Staff or guests can create bookings" INSERT policy
-    // (auth.uid() IS NOT NULL OR created_by IS NULL) — but that policy alone
-    // isn't enough: supabase-js's .insert().select() does an INSERT ...
-    // RETURNING under the hood, and Postgres validates the RETURNING clause
-    // against the table's SELECT policy too. Guests have no SELECT policy
-    // covering their own just-inserted row since the wide-open
-    // "Anyone can look up a booking by reference_number" SELECT policy was
-    // correctly removed as part of the RLS lockdown fix earlier — Postgres
-    // reports that mismatch as "new row violates row-level security policy"
-    // even though the INSERT condition itself was satisfied. This whole
-    // route already does its own validation (required fields, rate
-    // limiting) server-side before writing, so using the service-role key
-    // here — same as the rest of this file already does for notifications —
-    // is safe and sidesteps the issue entirely instead of reopening the
-    // security hole with a broader SELECT policy.
-    const adminClient = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      { cookies: { getAll: () => [], setAll: () => {} } }
-    )
-
     const body = await request.json()
     const isDraft = body.is_draft === true
 
@@ -87,7 +73,6 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ error: `Missing required field: ${field}` }, { status: 400 })
         }
       }
-
     } else {
       // Drafts can skip almost everything, but we still need an email —
       // it's the only way a guest can find their way back to an unfinished
@@ -100,94 +85,55 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // `is_draft` is deliberately omitted from the direct insert below when
-    // it's false (the normal, real-submission case) — Supabase's PostgREST
-    // layer has been intermittently losing track of columns/tables/functions
-    // that provably exist in the database (reported to Supabase support,
-    // ticket SU-415685), and `is_draft` was hit by that same bug, which was
-    // blocking EVERY real guest booking outright. Leaving it out of the
-    // payload lets the column's own DB-level default (false) apply instead
-    // of going through PostgREST's column-aware insert path for it.
-    //
-    // Drafts can't use that trick (they need is_draft = true), so they go
-    // through the fleetflow_create_draft_booking() RPC instead — the SQL
-    // inside that function runs directly in the database and never touches
-    // PostgREST's column-aware request parsing, sidestepping the cache bug
-    // for this path too.
-    let data: { id: string; reference_number: string } | null = null
-    let error: { message: string } | null = null
+    const [created] = await db
+      .insert(schema.bookings)
+      .values({
+        guestName: body.guest_name || null,
+        guestNationality: body.guest_nationality || null,
+        guestCount: body.guest_count ? Number(body.guest_count) : 1,
+        guestPhone: body.guest_phone || null,
+        guestEmail: body.guest_email || null,
+        guestLineId: body.guest_line_id ?? null,
+        pickupLocation: body.pickup_location || null,
+        dropoffLocation: body.dropoff_location || null,
+        pickupDatetime: body.pickup_datetime || null,
+        dropoffDatetime: body.dropoff_datetime ?? null,
+        vehicleType: body.vehicle_type || 'sedan',
+        driverRequired: body.driver_required ?? true,
+        specialRequests: body.special_requests ?? null,
+        status: 'pending',
+        isDraft,
+        createdBy: null, // guest booking — no auth user
+      })
+      .returning({ id: schema.bookings.id, referenceNumber: schema.bookings.referenceNumber })
 
-    if (isDraft) {
-      const { data: rpcData, error: rpcError } = await adminClient
-        .rpc('fleetflow_create_draft_booking', {
-          p_guest_name: body.guest_name || null,
-          p_guest_nationality: body.guest_nationality || null,
-          p_guest_count: body.guest_count ? Number(body.guest_count) : 1,
-          p_guest_phone: body.guest_phone || null,
-          p_guest_email: body.guest_email || null,
-          p_guest_line_id: body.guest_line_id ?? null,
-          p_pickup_location: body.pickup_location || null,
-          p_dropoff_location: body.dropoff_location || null,
-          p_pickup_datetime: body.pickup_datetime || null,
-          p_dropoff_datetime: body.dropoff_datetime ?? null,
-          p_vehicle_type: body.vehicle_type || 'sedan',
-          p_driver_required: body.driver_required ?? true,
-          p_special_requests: body.special_requests ?? null,
-        })
-        .single()
-      data = rpcData as { id: string; reference_number: string } | null
-      error = rpcError
-    } else {
-      const { data: insertData, error: insertError } = await adminClient
-        .from('bookings')
-        .insert({
-          guest_name: body.guest_name || null,
-          guest_nationality: body.guest_nationality || null,
-          guest_count: body.guest_count ? Number(body.guest_count) : 1,
-          guest_phone: body.guest_phone || null,
-          guest_email: body.guest_email || null,
-          guest_line_id: body.guest_line_id ?? null,
-          pickup_location: body.pickup_location || null,
-          dropoff_location: body.dropoff_location || null,
-          pickup_datetime: body.pickup_datetime || null,
-          dropoff_datetime: body.dropoff_datetime ?? null,
-          vehicle_type: body.vehicle_type || 'sedan',
-          driver_required: body.driver_required ?? true,
-          special_requests: body.special_requests ?? null,
-          status: 'pending',
-          created_by: null, // guest booking — no auth user
-        })
-        .select('id, reference_number')
-        .single()
-      data = insertData
-      error = insertError
+    if (!created) {
+      return NextResponse.json({ error: 'Failed to create booking' }, { status: 400 })
     }
-
-    if (error || !data) return NextResponse.json({ error: error?.message ?? 'Failed to create booking' }, { status: 400 })
 
     // Drafts are just a save point — no staff notification yet, but we do send
     // a lightweight "here's how to get back to it" email since it's the only
     // recovery path if the guest closes the tab.
     if (isDraft) {
-      sendDraftSavedEmail(body.guest_email, data.reference_number)
+      sendDraftSavedEmail(body.guest_email, created.referenceNumber)
         .catch((err) => console.error('[email] draft-saved failed:', err))
-      return NextResponse.json({ reference_number: data.reference_number, is_draft: true }, { status: 201 })
+      return NextResponse.json({ reference_number: created.referenceNumber, is_draft: true }, { status: 201 })
     }
 
     // Notify all admin/manager/staff users about the new guest booking
-    const { data: staff } = await adminClient
-      .from('profiles')
-      .select('id')
-      .in('role', ['admin', 'manager', 'staff'])
+    const staff = await db
+      .select({ id: schema.profiles.id })
+      .from(schema.profiles)
+      .where(inArray(schema.profiles.role, ['admin', 'manager', 'staff']))
 
-    if (staff && staff.length > 0) {
-      await adminClient.from('notifications').insert(
+    if (staff.length > 0) {
+      await db.insert(schema.notifications).values(
         staff.map((user) => ({
-          user_id: user.id,
-          type: 'new_booking',
+          userId: user.id,
+          type: 'new_booking' as const,
           title: '🚗 New Guest Booking',
-          message: `${body.guest_name} submitted a booking request — ${body.pickup_location} → ${body.dropoff_location}. Ref: ${data.reference_number}`,
-          booking_id: data.id,
+          message: `${body.guest_name} submitted a booking request — ${body.pickup_location} → ${body.dropoff_location}. Ref: ${created.referenceNumber}`,
+          bookingId: created.id,
         }))
       )
     }
@@ -196,7 +142,7 @@ export async function POST(request: NextRequest) {
     sendBookingConfirmationEmail({
       guestName: body.guest_name,
       guestEmail: body.guest_email,
-      referenceNumber: data.reference_number,
+      referenceNumber: created.referenceNumber,
       pickupLocation: body.pickup_location,
       dropoffLocation: body.dropoff_location,
       pickupDatetime: body.pickup_datetime,
@@ -206,8 +152,9 @@ export async function POST(request: NextRequest) {
       specialRequests: body.special_requests ?? null,
     }).catch((err) => console.error('[email] confirmation failed:', err))
 
-    return NextResponse.json({ reference_number: data.reference_number }, { status: 201 })
-  } catch {
+    return NextResponse.json({ reference_number: created.referenceNumber }, { status: 201 })
+  } catch (err) {
+    console.error('[public/bookings] POST error:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
