@@ -1,40 +1,50 @@
 import type { Metadata } from 'next'
-import { createClient } from '@/lib/supabase/server'
+import { desc, inArray } from 'drizzle-orm'
 import { getProfile } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Topbar } from '@/components/layout/Topbar'
 import { ActivityLogClient } from '@/components/activity/ActivityLogClient'
+import { db, schema } from '@/lib/db'
 
 export const metadata: Metadata = { title: 'Activity Log' }
 
+// Talks directly to Postgres via Drizzle instead of PostgREST.
 export default async function ActivityPage() {
   const profile = await getProfile()
   if (!profile) redirect('/login')
   if (!['admin', 'manager'].includes(profile.role)) redirect('/dashboard')
 
-  const supabase = createClient()
-  const { data: logs } = await supabase
-    .from('audit_log')
-    .select('*')
-    .order('created_at', { ascending: false })
+  const logs = await db
+    .select()
+    .from(schema.auditLog)
+    .orderBy(desc(schema.auditLog.createdAt))
     .limit(300)
 
   // Attach reference numbers for any logs tied to a booking (two-step lookup —
   // simpler and safer than relying on a specific FK constraint name for an
   // embedded join).
-  const bookingIds = Array.from(new Set((logs ?? []).map((l) => l.booking_id).filter(Boolean))) as string[]
+  const bookingIds = Array.from(new Set(logs.map((l) => l.bookingId).filter(Boolean))) as string[]
   let refByBookingId: Record<string, string> = {}
   if (bookingIds.length > 0) {
-    const { data: bookings } = await supabase
-      .from('bookings')
-      .select('id, reference_number')
-      .in('id', bookingIds)
-    refByBookingId = Object.fromEntries((bookings ?? []).map((b) => [b.id, b.reference_number]))
+    const bookingRows = await db
+      .select({ id: schema.bookings.id, referenceNumber: schema.bookings.referenceNumber })
+      .from(schema.bookings)
+      .where(inArray(schema.bookings.id, bookingIds))
+    refByBookingId = Object.fromEntries(bookingRows.map((b) => [b.id, b.referenceNumber]))
   }
 
-  const enrichedLogs = (logs ?? []).map((l) => ({
-    ...l,
-    reference_number: l.booking_id ? refByBookingId[l.booking_id] ?? null : null,
+  const enrichedLogs = logs.map((l) => ({
+    id: l.id,
+    booking_id: l.bookingId,
+    actor_id: l.actorId,
+    actor_name: l.actorName,
+    action: l.action,
+    field: l.field,
+    old_value: l.oldValue,
+    new_value: l.newValue,
+    note: l.note,
+    created_at: l.createdAt,
+    reference_number: l.bookingId ? refByBookingId[l.bookingId] ?? null : null,
   }))
 
   return (
