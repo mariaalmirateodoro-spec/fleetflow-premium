@@ -1,37 +1,47 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient as createSupabaseClient } from '@supabase/supabase-js'
+import { eq } from 'drizzle-orm'
 import { sendModificationRequestEmail } from '@/lib/email'
+import { db, schema } from '@/lib/db'
 
-function createAdminClient() {
-  return createSupabaseClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } }
-  )
-}
-
+// Guest-facing: no Supabase auth session here (guests aren't logged-in
+// users), looked up by reference_number instead of id — matches the
+// original supabase-js admin-client version. Talks directly to Postgres via
+// Drizzle instead of PostgREST.
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   const body = await request.json()
-  const { pickup_datetime, pickup_location, dropoff_location, notes } = body
+  const { pickup_datetime, pickup_location, dropoff_location, notes } = body as {
+    pickup_datetime?: string
+    pickup_location?: string
+    dropoff_location?: string
+    notes?: string
+  }
 
   // At least one field must be requested
   if (!pickup_datetime && !pickup_location && !dropoff_location && !notes) {
     return NextResponse.json({ error: 'At least one change must be requested' }, { status: 400 })
   }
 
-  const admin = createAdminClient()
-
   // Fetch the booking by reference_number
-  const { data: booking, error: fetchError } = await admin
-    .from('bookings')
-    .select('id, guest_name, guest_email, reference_number, pickup_datetime, pickup_location, dropoff_location, status, modification_status')
-    .eq('reference_number', params.id)
-    .single()
+  const [booking] = await db
+    .select({
+      id: schema.bookings.id,
+      guestName: schema.bookings.guestName,
+      guestEmail: schema.bookings.guestEmail,
+      referenceNumber: schema.bookings.referenceNumber,
+      pickupDatetime: schema.bookings.pickupDatetime,
+      pickupLocation: schema.bookings.pickupLocation,
+      dropoffLocation: schema.bookings.dropoffLocation,
+      status: schema.bookings.status,
+      modificationStatus: schema.bookings.modificationStatus,
+    })
+    .from(schema.bookings)
+    .where(eq(schema.bookings.referenceNumber, params.id))
+    .limit(1)
 
-  if (fetchError || !booking) {
+  if (!booking) {
     return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
   }
 
@@ -41,29 +51,25 @@ export async function POST(
   }
 
   // Prevent duplicate pending requests
-  if (booking.modification_status === 'pending') {
+  if (booking.modificationStatus === 'pending') {
     return NextResponse.json({ error: 'A modification request is already pending' }, { status: 400 })
   }
 
   const now = new Date().toISOString()
 
   // Store the modification request
-  const { error: updateError } = await admin
-    .from('bookings')
-    .update({
-      modification_status: 'pending',
-      modification_pickup_datetime: pickup_datetime ?? null,
-      modification_pickup_location: pickup_location ?? null,
-      modification_dropoff_location: dropoff_location ?? null,
-      modification_notes: notes ?? null,
-      modification_requested_at: now,
-      updated_at: now,
+  await db
+    .update(schema.bookings)
+    .set({
+      modificationStatus: 'pending',
+      modificationPickupDatetime: pickup_datetime ?? null,
+      modificationPickupLocation: pickup_location ?? null,
+      modificationDropoffLocation: dropoff_location ?? null,
+      modificationNotes: notes ?? null,
+      modificationRequestedAt: now,
+      updatedAt: now,
     })
-    .eq('id', booking.id)
-
-  if (updateError) {
-    return NextResponse.json({ error: updateError.message }, { status: 500 })
-  }
+    .where(eq(schema.bookings.id, booking.id))
 
   // Notify admin via email
   const adminEmail = process.env.GMAIL_USER
@@ -71,15 +77,15 @@ export async function POST(
     try {
       await sendModificationRequestEmail({
         adminEmail,
-        guestName: booking.guest_name,
-        referenceNumber: booking.reference_number,
+        guestName: booking.guestName ?? '',
+        referenceNumber: booking.referenceNumber,
         requestedPickupDatetime: pickup_datetime ?? null,
         requestedPickupLocation: pickup_location ?? null,
         requestedDropoffLocation: dropoff_location ?? null,
         requestedNotes: notes ?? null,
-        originalPickupDatetime: booking.pickup_datetime,
-        originalPickupLocation: booking.pickup_location,
-        originalDropoffLocation: booking.dropoff_location,
+        originalPickupDatetime: booking.pickupDatetime ?? '',
+        originalPickupLocation: booking.pickupLocation ?? '',
+        originalDropoffLocation: booking.dropoffLocation ?? '',
       })
     } catch (err) {
       console.error('[modify-request] email error:', err)
