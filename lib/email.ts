@@ -1,7 +1,20 @@
 import nodemailer from 'nodemailer'
 
+// Explicit host/port (587 + STARTTLS) instead of nodemailer's `service:
+// 'gmail'` shorthand, which defaults to port 465 with implicit TLS. On
+// Vercel's serverless runtime, connections to port 465 were being dropped
+// before the TLS handshake completed ("Client network socket disconnected
+// before secure TLS connection was established") — a known issue with
+// outbound connections to that port from some serverless hosts. Port 587
+// (STARTTLS: connect in plaintext, then upgrade to TLS) is more commonly
+// allowed through. If this still fails the same way, the outbound port is
+// being blocked entirely and Gmail SMTP won't work from here regardless of
+// port — an HTTP-API email provider (e.g. Resend) would be the fix at that
+// point.
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
+  host: 'smtp.gmail.com',
+  port: 587,
+  secure: false, // STARTTLS, not implicit TLS
   auth: {
     user: process.env.GMAIL_USER,
     pass: process.env.GMAIL_APP_PASSWORD,
