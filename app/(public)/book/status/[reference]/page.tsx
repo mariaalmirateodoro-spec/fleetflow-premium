@@ -15,6 +15,16 @@ function createAdminClient() {
   )
 }
 
+// Force this page to be re-fetched from the database on every request.
+// supabase-js makes its requests with the global `fetch`, which Next.js
+// patches to cache indefinitely by default unless told otherwise — without
+// this, the first time someone opens a given reference number's status
+// page, that response (whatever the booking's state was at that moment)
+// gets cached and keeps being served even after the booking changes (e.g.
+// a draft that gets finalized would keep showing as a draft here).
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 // ─── Metadata ────────────────────────────────────────────────
 export async function generateMetadata({
   params,
