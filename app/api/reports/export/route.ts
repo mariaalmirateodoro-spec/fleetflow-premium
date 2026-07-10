@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import ExcelJS from 'exceljs'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, getUser } from '@/lib/supabase/server'
 import { getCachedReports, computeDashboardReports, type DashboardReportData } from '@/lib/reports'
 
 // Exports the exact same data shown on the Reports dashboard (cached report
@@ -295,7 +295,9 @@ function buildWorkbook(data: DashboardReportData, generatedAt: string): ExcelJS.
 
 export async function GET() {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  // Fast, cached check — middleware.ts already did the authoritative,
+  // network-verified check for this request. See lib/supabase/server.ts.
+  const user = await getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()

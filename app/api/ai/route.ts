@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, getUser } from '@/lib/supabase/server'
 import { suggestVehicle, recommendSupplier, draftSupplierEmail, summarizeBooking, generateViberMessage, draftGuestEmail, generateGuestViberMessage } from '@/lib/ai'
 
 export async function POST(request: NextRequest) {
   try {
     const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    // Fast, cached check — middleware.ts already did the authoritative,
+    // network-verified check for this request. See lib/supabase/server.ts.
+    const user = await getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const body = await request.json()

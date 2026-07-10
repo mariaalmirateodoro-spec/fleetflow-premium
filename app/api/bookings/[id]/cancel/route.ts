@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { eq } from 'drizzle-orm'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, getUser } from '@/lib/supabase/server'
 import { sendBookingCancelledEmail } from '@/lib/email'
 import { logAudit, adminClient } from '@/lib/audit'
 import { db, schema } from '@/lib/db'
@@ -13,8 +13,9 @@ export async function POST(
 ) {
   const supabase = createClient()
 
-  // Auth check
-  const { data: { user } } = await supabase.auth.getUser()
+  // Auth check — fast, cached check that trusts middleware.ts's
+  // authoritative, network-verified check already made for this request.
+  const user = await getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   // Role check — admin, manager, or staff can cancel

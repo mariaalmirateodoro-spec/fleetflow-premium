@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { and, desc, eq, ilike, or, sql } from 'drizzle-orm'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, getUser } from '@/lib/supabase/server'
 import { notifyManagers } from '@/lib/notifications'
 import { logAudit, adminClient } from '@/lib/audit'
 import { db, schema } from '@/lib/db'
@@ -13,7 +13,7 @@ import { db, schema } from '@/lib/db'
 export async function GET(request: NextRequest) {
   try {
     const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const user = await getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { searchParams } = new URL(request.url)
@@ -104,13 +104,13 @@ export async function GET(request: NextRequest) {
 // lib/db) instead of PostgREST. Used to need the fleetflow_set_is_draft RPC
 // as a workaround for PostgREST losing track of the is_draft column (ticket
 // SU-415685); not needed anymore since this route no longer touches
-// PostgREST at all. auth.getUser() below is Supabase Auth, a separate
-// service from PostgREST/the database — unaffected by that bug, so it's
-// intentionally left as-is.
+// PostgREST at all. getUser() below is the fast, cache()-backed helper from
+// lib/supabase/server (Supabase Auth, a separate service from PostgREST/the
+// database — unaffected by that bug either way).
 export async function POST(request: NextRequest) {
   try {
     const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const user = await getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const body = await request.json()

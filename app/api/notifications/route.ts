@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { and, desc, eq } from 'drizzle-orm'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, getUser } from '@/lib/supabase/server'
 import { db, schema } from '@/lib/db'
 
 // Talks directly to Postgres via Drizzle instead of PostgREST.
 export async function GET() {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const rows = await db
@@ -32,7 +32,7 @@ export async function GET() {
 
 export async function PATCH(request: NextRequest) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { markAllRead, notificationId } = await request.json()

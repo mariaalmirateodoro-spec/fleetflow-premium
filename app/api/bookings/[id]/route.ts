@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { eq } from 'drizzle-orm'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, getUser } from '@/lib/supabase/server'
 import { sendDriverAssignedEmail } from '@/lib/email'
 import { logAudit, adminClient } from '@/lib/audit'
 import { db, schema } from '@/lib/db'
@@ -12,7 +12,7 @@ import { db, schema } from '@/lib/db'
 // directly to Postgres via Drizzle instead of PostgREST.
 export async function GET(_: NextRequest, { params }: { params: { id: string } }) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const [row] = await db
@@ -127,12 +127,12 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
 // fleetflow_get_is_draft / fleetflow_set_is_draft RPCs as a workaround for
 // PostgREST losing track of the is_draft column (ticket SU-415685); not
 // needed anymore since this route no longer touches PostgREST at all.
-// auth.getUser() below is Supabase Auth, a separate service from
-// PostgREST/the database — unaffected by that bug, so it's intentionally
-// left as-is.
+// getUser() below is the fast, cache()-backed helper from
+// lib/supabase/server (Supabase Auth, a separate service from
+// PostgREST/the database — unaffected by that bug either way).
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { data: profile } = await supabase
@@ -337,12 +337,24 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
 
 export async function DELETE(_: NextRequest, { params }: { params: { id: string } }) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   // Admin only — verify via user session
-  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
+  const { data: profile } = await supabase.from('profiles').select('role, full_name').eq('id', user.id).single()
   if (profile?.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  // Grab identifying details before deleting — this was never wired up to
+  // the Activity Log, so deletions were both unlogged AND (since
+  // audit_log.booking_id cascades on delete) would have wiped out any prior
+  // history for the booking too. Logged with bookingId: null (the booking
+  // won't exist anymore) and the reference number in the note instead, so
+  // this entry survives the delete.
+  const [toDelete] = await db
+    .select({ referenceNumber: schema.bookings.referenceNumber, guestName: schema.bookings.guestName })
+    .from(schema.bookings)
+    .where(eq(schema.bookings.id, params.id))
+    .limit(1)
 
   try {
     await db.delete(schema.notifications).where(eq(schema.notifications.bookingId, params.id))
@@ -353,6 +365,16 @@ export async function DELETE(_: NextRequest, { params }: { params: { id: string 
     const message = err instanceof Error ? err.message : 'Failed to delete booking'
     return NextResponse.json({ error: message }, { status: 400 })
   }
+
+  await logAudit(adminClient(), {
+    bookingId: null,
+    actorId: user.id,
+    actorName: profile.full_name || user.email || 'Unknown',
+    action: 'booking_deleted',
+    note: toDelete
+      ? `Deleted booking ${toDelete.referenceNumber}${toDelete.guestName ? ` (${toDelete.guestName})` : ''}`
+      : `Deleted booking ${params.id}`,
+  })
 
   return NextResponse.json({ success: true })
 }

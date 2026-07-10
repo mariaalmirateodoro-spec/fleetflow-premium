@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, getUser } from '@/lib/supabase/server'
 import { generateReports } from '@/lib/reports'
 
 // Manual "Regenerate now" trigger for staff, so the Reports page isn't stuck
@@ -8,7 +8,12 @@ import { generateReports } from '@/lib/reports'
 // instead of CRON_SECRET.
 export async function POST() {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  // Fast, cache()-backed check that trusts middleware.ts's authoritative,
+  // network-verified getUser() call already made for this request — see the
+  // comment on getUser() in lib/supabase/server.ts for why this is safe.
+  // Was previously a second full round trip to Supabase Auth on top of
+  // middleware's, on every single API call.
+  const user = await getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { data: profile } = await supabase
