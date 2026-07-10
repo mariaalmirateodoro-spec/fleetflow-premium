@@ -172,9 +172,16 @@ function buildTimeline(booking: Booking): Step[] {
 
 export default async function BookingStatusPage({
   params,
+  searchParams,
 }: {
   params: { reference: string }
+  searchParams: { rated?: string; rate_error?: string }
 }) {
+  // Set when the guest clicked a one-click star link in the trip-completion
+  // email (see app/api/public/feedback/quick/route.ts) — shows a quick
+  // thank-you banner instead of silently landing on the page.
+  const justRated = searchParams?.rated ? Number(searchParams.rated) : null
+  const rateError = searchParams?.rate_error ?? null
   // Service-role client — this is a public, unauthenticated page (a guest
   // with just their reference_number in the URL), so it can't rely on an
   // RLS policy scoped to a logged-in user. The `.eq('reference_number', ...)`
@@ -454,6 +461,25 @@ export default async function BookingStatusPage({
             ))}
           </ol>
         </div>
+
+        {/* One-click star rating from the trip-completion email — confirms
+            it went through, since the click itself already recorded it
+            (see app/api/public/feedback/quick/route.ts). */}
+        {justRated && justRated >= 1 && justRated <= 5 && (
+          <div className="rounded-2xl border border-amber-400/30 bg-amber-400/10 p-5 text-center">
+            <p className="text-amber-300 text-lg mb-1">{'★'.repeat(justRated)}{'☆'.repeat(5 - justRated)}</p>
+            <p className="text-slate-300 text-sm">Thanks for rating your trip! You can add a comment below if you'd like.</p>
+          </div>
+        )}
+        {rateError && (
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-5 text-center">
+            <p className="text-slate-400 text-sm">
+              {rateError === 'not_completed'
+                ? "That rating link isn't active yet — it only works once the trip is marked completed."
+                : "That rating link didn't work. You can rate your trip using the form below instead."}
+            </p>
+          </div>
+        )}
 
         {/* Rate Your Trip — completed bookings only, optional */}
         {booking.status === 'completed' && (

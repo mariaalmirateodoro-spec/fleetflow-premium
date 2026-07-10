@@ -801,7 +801,14 @@ export async function sendTripCompletionReceiptEmail(data: TripCompletionReceipt
 
       <p style="color:#64748b;font-size:14px;text-align:center;margin:0 0 24px">We hope you had an excellent experience. Thank you for traveling with FleetFlow Premium.</p>
 
-      ${siteUrl ? `<a href="${siteUrl}/book/status/${data.referenceNumber}" class="cta-btn">⭐ Rate Your Trip (optional)</a>` : ''}
+      ${siteUrl ? `
+      <div style="text-align:center;margin:0 0 20px">
+        <p style="color:#64748b;font-size:13px;margin:0 0 10px">How was your trip? Tap a star to rate:</p>
+        ${[1, 2, 3, 4, 5].map((n) => `<a href="${siteUrl}/api/public/feedback/quick?ref=${data.referenceNumber}&rating=${n}" style="text-decoration:none;color:#f59e0b;font-size:26px;letter-spacing:3px;display:inline-block;margin:0 4px;line-height:1">${'★'.repeat(n)}${'☆'.repeat(5 - n)}</a>`).join('')}
+      </div>
+      <p style="text-align:center;margin:0 0 28px">
+        <a href="${siteUrl}/book/status/${data.referenceNumber}" style="color:#4f46e5;font-size:13px;text-decoration:underline">Or leave a comment with your rating →</a>
+      </p>` : ''}
     </div>
     <div class="footer">
       <p>© ${new Date().getFullYear()} FleetFlow Premium · Internal System</p>
