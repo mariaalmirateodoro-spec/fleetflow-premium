@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { desc, ilike, or } from 'drizzle-orm'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, getUser } from '@/lib/supabase/server'
 import { db, schema } from '@/lib/db'
 
 // Staff-side "search a past guest" lookup — the equivalent of the
@@ -13,7 +13,9 @@ import { db, schema } from '@/lib/db'
 export async function GET(request: NextRequest) {
   try {
     const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    // Fast, cached check — middleware.ts already did the authoritative,
+    // network-verified check for this request. See lib/supabase/server.ts.
+    const user = await getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const q = new URL(request.url).searchParams.get('q')?.trim() ?? ''

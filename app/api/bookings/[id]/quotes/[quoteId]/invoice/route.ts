@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { eq } from 'drizzle-orm'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, getUser } from '@/lib/supabase/server'
 import { logAudit, adminClient } from '@/lib/audit'
 import { db, schema } from '@/lib/db'
 
@@ -20,7 +20,7 @@ export async function POST(
   { params }: { params: { id: string; quoteId: string } }
 ) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { data: profile } = await supabase.from('profiles').select('role, full_name').eq('id', user.id).single()
@@ -63,7 +63,7 @@ export async function GET(
   { params }: { params: { id: string; quoteId: string } }
 ) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const [quote] = await db

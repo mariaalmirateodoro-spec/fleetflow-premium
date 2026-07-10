@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { eq } from 'drizzle-orm'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, getUser } from '@/lib/supabase/server'
 import { sendDriverAssignedEmail } from '@/lib/email'
 import { logAudit, adminClient } from '@/lib/audit'
 import { db, schema } from '@/lib/db'
@@ -12,7 +12,7 @@ import { db, schema } from '@/lib/db'
 // directly to Postgres via Drizzle instead of PostgREST.
 export async function GET(_: NextRequest, { params }: { params: { id: string } }) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const [row] = await db
@@ -127,12 +127,12 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
 // fleetflow_get_is_draft / fleetflow_set_is_draft RPCs as a workaround for
 // PostgREST losing track of the is_draft column (ticket SU-415685); not
 // needed anymore since this route no longer touches PostgREST at all.
-// auth.getUser() below is Supabase Auth, a separate service from
-// PostgREST/the database — unaffected by that bug, so it's intentionally
-// left as-is.
+// getUser() below is the fast, cache()-backed helper from
+// lib/supabase/server (Supabase Auth, a separate service from
+// PostgREST/the database — unaffected by that bug either way).
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { data: profile } = await supabase
@@ -337,7 +337,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
 
 export async function DELETE(_: NextRequest, { params }: { params: { id: string } }) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   // Admin only — verify via user session

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { eq } from 'drizzle-orm'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, getUser } from '@/lib/supabase/server'
 import { logAudit, adminClient } from '@/lib/audit'
 import { db, schema } from '@/lib/db'
 
@@ -19,7 +19,9 @@ import { db, schema } from '@/lib/db'
 // in the schema, which is what surfaced this.
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  // Fast, cached check — middleware.ts already did the authoritative,
+  // network-verified check for this request. See lib/supabase/server.ts.
+  const user = await getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { data: profile } = await supabase.from('profiles').select('role, full_name').eq('id', user.id).single()

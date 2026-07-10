@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { eq } from 'drizzle-orm'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, getUser } from '@/lib/supabase/server'
 import { logAudit, adminClient } from '@/lib/audit'
 import { db, schema } from '@/lib/db'
 
 // Talks directly to Postgres via Drizzle (see lib/db) instead of PostgREST.
-// auth.getUser() is Supabase Auth, a separate service, left as-is.
+// getUser() here is the fast, cache()-backed helper from lib/supabase/server
+// (reads the session already verified by middleware.ts, no extra network
+// round trip) — not a second call to Supabase Auth.
 // logAudit() still takes a supabase-js client internally — unrelated to
 // this route's own queries, left as-is for now (Phase 2d cleanup item).
 
@@ -34,7 +36,7 @@ function toSnakeCase(s: SupplierRow) {
 
 export async function GET() {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const rows = await db.select().from(schema.suppliers).orderBy(schema.suppliers.companyName)
@@ -43,7 +45,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await request.json()
@@ -80,7 +82,7 @@ export async function POST(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   // Admin/manager only — matches the old RLS policy ("Admins and managers
@@ -140,7 +142,7 @@ export async function PATCH(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { data: profile } = await supabase.from('profiles').select('role, full_name').eq('id', user.id).single()
