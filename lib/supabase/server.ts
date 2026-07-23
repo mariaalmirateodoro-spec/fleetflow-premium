@@ -79,5 +79,5 @@ export const getProfile = cache(async function getProfile(): Promise<Profile | n
     .eq('id', user.id)
     .single()
 
-  return data
+  return data as Profile | null
 })

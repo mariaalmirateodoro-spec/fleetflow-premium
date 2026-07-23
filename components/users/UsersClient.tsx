@@ -217,4 +217,3 @@ export function UsersClient({ users: initialUsers, currentUser }: Props) {
     </>
   )
 }
-         

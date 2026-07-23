@@ -87,6 +87,11 @@ export interface Booking {
   created_at: string
   updated_at: string
   is_draft: boolean
+  // Payment fields
+  payment_status: 'unpaid' | 'partial' | 'paid'
+  payment_amount: number | null
+  paid_at: string | null
+  payment_notes: string | null
   // Modification request fields
   modification_status: string | null
   modification_pickup_datetime: string | null
