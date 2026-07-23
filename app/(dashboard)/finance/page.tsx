@@ -36,7 +36,8 @@ export default async function FinancePage() {
       />
       <div className="flex-1 overflow-y-auto p-6">
         <FinanceClient
-          initialBookings={bookings ?? []}
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          initialBookings={(bookings ?? []) as any}
           profile={profile}
         />
       </div>

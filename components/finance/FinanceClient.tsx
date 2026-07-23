@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import React, { useState, useMemo } from 'react'
 import {
   DollarSign, CheckCircle2, Clock, AlertCircle,
   Search, X, Loader2, ChevronDown, CalendarDays, FileText, TrendingUp,
