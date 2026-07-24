@@ -60,13 +60,12 @@ export async function PATCH(request: NextRequest) {
   if (paid_at !== undefined) updates.paid_at = paid_at
   if (payment_notes !== undefined) updates.payment_notes = payment_notes
 
-  const { data, error } = await supabase
+  const { data: rows, error } = await supabase
     .from('bookings')
     .update(updates)
     .eq('id', bookingId)
     .select('id, payment_status, payment_amount, paid_at, payment_notes')
-    .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-  return NextResponse.json({ data })
+  return NextResponse.json({ data: rows?.[0] ?? null })
 }
